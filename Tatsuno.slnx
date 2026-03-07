@@ -1,0 +1,20 @@
+<Solution>
+  <Configurations>
+    <Platform Name="Any CPU" />
+    <Platform Name="x64" />
+    <Platform Name="x86" />
+  </Configurations>
+  <Project Path="Tatsuno.Model/Tatsuno.Model.csproj">
+    <Platform Solution="*|x64" Project="x64" />
+  </Project>
+  <Project Path="Tatsuno.Native/Tatsuno.Native.vcxproj" Id="5d83420c-b1d7-40dd-bf00-d18f14aa7b5b" />
+  <Project Path="Tatsuno.Protocol/Tatsuno.Protocol.csproj">
+    <Platform Solution="*|x64" Project="x64" />
+  </Project>
+  <Project Path="Tatsuno.Transport.Serial/Tatsuno.Transport.Serial.csproj">
+    <Platform Solution="*|x64" Project="x64" />
+  </Project>
+  <Project Path="Tatsuno.WpfApp/Tatsuno.WpfApp.csproj">
+    <Platform Solution="*|x64" Project="x64" />
+  </Project>
+</Solution>

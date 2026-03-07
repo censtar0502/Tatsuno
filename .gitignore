@@ -1,0 +1,14 @@
+# Build output
+bin/
+obj/
+.vs/
+
+# User files
+*.user
+*.suo
+*.cache
+*.log
+
+# Rider/VSCode
+.idea/
+.vscode/

@@ -1,0 +1,235 @@
+<Window x:Class="Tatsuno.WpfApp.MainWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+        xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+        xmlns:vm="clr-namespace:Tatsuno.WpfApp.ViewModels"
+        mc:Ignorable="d"
+        Title="Tatsuno Master"
+        Height="980"
+        Width="1600"
+        WindowStartupLocation="CenterScreen"
+        Background="#C7D3D7">
+    <Window.DataContext>
+        <vm:MainViewModel/>
+    </Window.DataContext>
+
+    <DockPanel Margin="8">
+        <StatusBar DockPanel.Dock="Bottom">
+            <StatusBarItem Content="Состояние:"/>
+            <StatusBarItem Content="{Binding PollState}"/>
+            <Separator/>
+            <StatusBarItem Content="Активный отпуск:"/>
+            <StatusBarItem Content="{Binding LiftedInfo}"/>
+            <Separator/>
+            <StatusBarItem Content="OK:"/>
+            <StatusBarItem Content="{Binding FramesOk}"/>
+            <StatusBarItem Content="BAD:"/>
+            <StatusBarItem Content="{Binding FramesBadBcc}"/>
+            <Separator/>
+            <StatusBarItem Content="Последний RX:"/>
+            <StatusBarItem Content="{Binding LastRx}"/>
+        </StatusBar>
+
+        <Grid>
+            <Grid.RowDefinitions>
+                <RowDefinition Height="Auto"/>
+                <RowDefinition Height="*"/>
+                <RowDefinition Height="220"/>
+            </Grid.RowDefinitions>
+
+            <Border Grid.Row="0" Background="#D4DEE0" Padding="10" CornerRadius="4" Margin="0,0,0,8">
+                <Grid>
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="90"/>
+                        <ColumnDefinition Width="160"/>
+                        <ColumnDefinition Width="90"/>
+                        <ColumnDefinition Width="90"/>
+                        <ColumnDefinition Width="90"/>
+                        <ColumnDefinition Width="90"/>
+                        <ColumnDefinition Width="90"/>
+                        <ColumnDefinition Width="110"/>
+                        <ColumnDefinition Width="110"/>
+                        <ColumnDefinition Width="110"/>
+                        <ColumnDefinition Width="*"/>
+                    </Grid.ColumnDefinitions>
+
+                    <TextBlock Text="COM:" VerticalAlignment="Center"/>
+                    <ComboBox Grid.Column="1" Height="28" ItemsSource="{Binding AvailablePorts}" SelectedItem="{Binding SelectedPort}"/>
+                    <Button Grid.Column="2" Margin="8,0,0,0" Height="28" Content="Обновить" Command="{Binding RefreshPortsCommand}"/>
+                    <Button Grid.Column="3" Margin="8,0,0,0" Height="28" Content="Connect" Command="{Binding ConnectCommand}"/>
+                    <Button Grid.Column="4" Margin="8,0,0,0" Height="28" Content="Disconnect" Command="{Binding DisconnectCommand}"/>
+                    <TextBlock Grid.Column="5" Margin="12,0,0,0" Text="Постов:" VerticalAlignment="Center"/>
+                    <TextBox Grid.Column="6" Margin="6,0,0,0" Height="28" Text="{Binding PostsCount}"/>
+                    <Button Grid.Column="7" Margin="8,0,0,0" Height="28" Content="Применить" Command="{Binding ApplyPostsCommand}"/>
+                    <TextBlock Grid.Column="8" Margin="12,0,0,0" Text="Baud:" VerticalAlignment="Center"/>
+                    <TextBox Grid.Column="9" Margin="6,0,0,0" Height="28" Text="{Binding BaudRate}"/>
+                    <StackPanel Grid.Column="10" Margin="16,0,0,0" Orientation="Horizontal" VerticalAlignment="Center">
+                        <TextBlock Text="Лог: "/>
+                        <TextBlock Text="{Binding LogFilePath}"/>
+                    </StackPanel>
+                </Grid>
+            </Border>
+
+            <Grid Grid.Row="1">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="2.8*"/>
+                    <ColumnDefinition Width="1.2*"/>
+                </Grid.ColumnDefinitions>
+
+                <Border Grid.Column="0" Background="#4572A5" Padding="10" CornerRadius="4" Margin="0,0,8,0">
+                    <ListBox ItemsSource="{Binding Posts}" SelectedItem="{Binding SelectedPost}" BorderThickness="0" Background="Transparent" ScrollViewer.HorizontalScrollBarVisibility="Disabled">
+                        <ListBox.ItemContainerStyle>
+                            <Style TargetType="ListBoxItem">
+                                <Setter Property="Padding" Value="0"/>
+                                <Setter Property="Margin" Value="0,0,0,10"/>
+                                <Setter Property="Background" Value="Transparent"/>
+                                <Setter Property="BorderThickness" Value="0"/>
+                                <Setter Property="HorizontalContentAlignment" Value="Stretch"/>
+                            </Style>
+                        </ListBox.ItemContainerStyle>
+                        <ListBox.ItemTemplate>
+                            <DataTemplate>
+                                <Border Background="{Binding CardBrush}" BorderBrush="{Binding BorderBrush}" BorderThickness="6" CornerRadius="3" Padding="10">
+                                    <Grid>
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="280"/>
+                                            <ColumnDefinition Width="*"/>
+                                        </Grid.ColumnDefinitions>
+
+                                        <StackPanel Grid.Column="0" Margin="0,0,10,0">
+                                            <TextBlock Text="{Binding Header}" FontSize="26" Foreground="White" Margin="0,0,0,8"/>
+                                            <ItemsControl ItemsSource="{Binding Nozzles}">
+                                                <ItemsControl.ItemTemplate>
+                                                    <DataTemplate>
+                                                        <Grid Margin="0,0,0,8">
+                                                            <Grid.ColumnDefinitions>
+                                                                <ColumnDefinition Width="160"/>
+                                                                <ColumnDefinition Width="120"/>
+                                                                <ColumnDefinition Width="120"/>
+                                                            </Grid.ColumnDefinitions>
+                                                            <Button Grid.Column="0" Height="52" Command="{Binding SelectCommand}" Background="{Binding ProductBrush}" Foreground="White" FontSize="22" BorderThickness="0" Content="{Binding ProductName}"/>
+                                                            <TextBox Grid.Column="1" Margin="8,0,0,0" Height="52" FontSize="22" VerticalContentAlignment="Center" HorizontalContentAlignment="Center" Text="{Binding PriceText, UpdateSourceTrigger=PropertyChanged}"/>
+                                                            <StackPanel Grid.Column="2" Margin="8,0,0,0">
+                                                                <TextBlock Text="Тотал объём" Foreground="White" FontSize="11"/>
+                                                                <TextBlock Text="{Binding TotalsVolumeText}" Foreground="White" FontSize="16"/>
+                                                                <TextBlock Text="{Binding TotalsAmountText}" Foreground="White" FontSize="16"/>
+                                                            </StackPanel>
+                                                        </Grid>
+                                                    </DataTemplate>
+                                                </ItemsControl.ItemTemplate>
+                                            </ItemsControl>
+                                        </StackPanel>
+
+                                        <Grid Grid.Column="1">
+                                            <Grid.RowDefinitions>
+                                                <RowDefinition Height="Auto"/>
+                                                <RowDefinition Height="Auto"/>
+                                                <RowDefinition Height="Auto"/>
+                                                <RowDefinition Height="*"/>
+                                            </Grid.RowDefinitions>
+                                            <Border Grid.Row="0" Background="#D7DCDF" Height="120" Margin="20,20,20,18">
+                                                <TextBlock Text="{Binding LiveAmountText}" VerticalAlignment="Center" HorizontalAlignment="Center" FontSize="74" Foreground="#7F7B78"/>
+                                            </Border>
+                                            <Border Grid.Row="1" Background="#D7DCDF" Height="100" Margin="20,0,20,18">
+                                                <TextBlock Text="{Binding LiveVolumeText}" VerticalAlignment="Center" HorizontalAlignment="Center" FontSize="64" Foreground="#7F7B78"/>
+                                            </Border>
+                                            <Border Grid.Row="2" Background="#D7DCDF" Height="100" Margin="80,0,80,18">
+                                                <TextBlock Text="{Binding LivePriceText}" VerticalAlignment="Center" HorizontalAlignment="Center" FontSize="56" Foreground="#7F7B78"/>
+                                            </Border>
+                                            <StackPanel Grid.Row="3" VerticalAlignment="Bottom" Margin="20,10,20,20">
+                                                <TextBlock Text="{Binding StatusText}" HorizontalAlignment="Center" FontSize="54" Foreground="Black"/>
+                                                <TextBlock Text="{Binding ActiveNozzleText}" HorizontalAlignment="Center" FontSize="24" Foreground="Black" Margin="0,14,0,0"/>
+                                                <TextBlock Text="{Binding ControllabilityText}" HorizontalAlignment="Center" FontSize="18" Foreground="Black" Margin="0,4,0,0"/>
+                                            </StackPanel>
+                                        </Grid>
+                                    </Grid>
+                                </Border>
+                            </DataTemplate>
+                        </ListBox.ItemTemplate>
+                    </ListBox>
+                </Border>
+
+                <Border Grid.Column="1" Background="#D4DEE0" Padding="10" CornerRadius="4">
+                    <Grid>
+                        <Grid.RowDefinitions>
+                            <RowDefinition Height="Auto"/>
+                            <RowDefinition Height="160"/>
+                            <RowDefinition Height="Auto"/>
+                            <RowDefinition Height="Auto"/>
+                            <RowDefinition Height="Auto"/>
+                            <RowDefinition Height="Auto"/>
+                            <RowDefinition Height="*"/>
+                        </Grid.RowDefinitions>
+
+                        <TextBlock Text="{Binding DashboardTitle}" FontSize="20" Margin="0,0,0,8"/>
+
+                        <Border Grid.Row="1" Background="#EEF0C8" BorderBrush="#B8BDA3" BorderThickness="1" Padding="10">
+                            <StackPanel>
+                                <TextBlock Text="Ход отпуска" FontSize="18"/>
+                                <TextBlock Text="Сумма" Foreground="#0C5CC3" FontSize="16" Margin="0,10,0,0"/>
+                                <TextBlock Text="{Binding DashboardAmountText}" FontSize="34" HorizontalAlignment="Right"/>
+                                <TextBlock Text="Объём" Foreground="#0C5CC3" FontSize="16" Margin="0,6,0,0"/>
+                                <TextBlock Text="{Binding DashboardVolumeText}" FontSize="34" HorizontalAlignment="Right"/>
+                                <TextBlock Text="Цена" Foreground="#0C5CC3" FontSize="16" Margin="0,6,0,0"/>
+                                <TextBlock Text="{Binding DashboardPriceText}" FontSize="34" HorizontalAlignment="Right"/>
+                            </StackPanel>
+                        </Border>
+
+                        <TextBlock Grid.Row="2" Text="Пистолеты / цена" Foreground="#0C5CC3" FontSize="18" Margin="0,10,0,6"/>
+                        <ItemsControl Grid.Row="3" ItemsSource="{Binding DashboardNozzles}">
+                            <ItemsControl.ItemTemplate>
+                                <DataTemplate>
+                                    <Grid Margin="0,0,0,6">
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="90"/>
+                                            <ColumnDefinition Width="120"/>
+                                            <ColumnDefinition Width="*"/>
+                                        </Grid.ColumnDefinitions>
+                                        <Button Grid.Column="0" Height="34" Command="{Binding SelectCommand}" Background="{Binding ProductBrush}" Foreground="White" BorderThickness="0" Content="{Binding ProductName}"/>
+                                        <TextBlock Grid.Column="1" VerticalAlignment="Center" HorizontalAlignment="Center" Text="{Binding Number, StringFormat=Пистолет {0}}"/>
+                                        <TextBox Grid.Column="2" Height="34" Margin="8,0,0,0" VerticalContentAlignment="Center" HorizontalContentAlignment="Center" Text="{Binding PriceText, UpdateSourceTrigger=PropertyChanged}"/>
+                                    </Grid>
+                                </DataTemplate>
+                            </ItemsControl.ItemTemplate>
+                        </ItemsControl>
+
+                        <TextBlock Grid.Row="4" Text="Пресет" Foreground="#0C5CC3" FontSize="18" Margin="0,12,0,6"/>
+                        <Grid Grid.Row="5">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*"/>
+                                <ColumnDefinition Width="*"/>
+                            </Grid.ColumnDefinitions>
+                            <TextBox Grid.Column="0" Height="38" Margin="0,0,8,0" FontSize="18" VerticalContentAlignment="Center" HorizontalContentAlignment="Center" Text="{Binding PresetDisplayText, UpdateSourceTrigger=PropertyChanged}"/>
+                            <StackPanel Grid.Column="1">
+                                <Button Height="38" Margin="0,0,0,6" Content="Чек и пуск по сумме" Command="{Binding StartAmountCommand}"/>
+                                <Button Height="38" Content="Пуск по объёму" Command="{Binding StartVolumeCommand}"/>
+                            </StackPanel>
+                        </Grid>
+
+                        <StackPanel Grid.Row="6" Margin="0,12,0,0">
+                            <TextBlock Text="Состояние поста" Foreground="#0C5CC3" FontSize="18"/>
+                            <TextBlock Text="{Binding DashboardStateText}" FontSize="26" Margin="0,4,0,0"/>
+                            <TextBlock Text="{Binding DashboardActiveNozzleText}" FontSize="18" Margin="0,4,0,0"/>
+                            <TextBlock Text="{Binding DashboardControllabilityText}" FontSize="18" Margin="0,2,0,8"/>
+                            <WrapPanel Margin="0,4,0,0">
+                                <Button Margin="0,0,6,6" Width="90" Height="36" Content="Status" Command="{Binding RequestStatusCommand}"/>
+                                <Button Margin="0,0,6,6" Width="90" Height="36" Content="Totals" Command="{Binding RequestTotalsCommand}"/>
+                                <Button Margin="0,0,6,6" Width="90" Height="36" Content="Cancel" Command="{Binding CancelCommand}"/>
+                                <Button Margin="0,0,6,6" Width="90" Height="36" Content="Lock" Command="{Binding LockPumpCommand}"/>
+                                <Button Margin="0,0,6,6" Width="90" Height="36" Content="Release" Command="{Binding ReleasePumpCommand}"/>
+                            </WrapPanel>
+                            <TextBlock Text="Последний кадр" Foreground="#0C5CC3" FontSize="16" Margin="0,10,0,0"/>
+                            <TextBox Text="{Binding DashboardLastPayload, Mode=OneWay}" IsReadOnly="True" TextWrapping="Wrap" Height="64"/>
+                            <TextBlock Text="{Binding DashboardLastUpdateText}" Margin="0,4,0,0"/>
+                        </StackPanel>
+                    </Grid>
+                </Border>
+            </Grid>
+
+            <Border Grid.Row="2" Background="#EDF2F5" Padding="8" CornerRadius="4" Margin="0,8,0,0">
+                <ListBox ItemsSource="{Binding Log}" FontFamily="Consolas" FontSize="13"/>
+            </Border>
+        </Grid>
+    </DockPanel>
+</Window>
