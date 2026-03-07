@@ -150,6 +150,7 @@
                                     <RowDefinition Height="Auto"/>
                                     <RowDefinition Height="Auto"/>
                                     <RowDefinition Height="Auto"/>
+                                    <RowDefinition Height="Auto"/>
                                     <RowDefinition Height="*"/>
                                 </Grid.RowDefinitions>
 
@@ -221,32 +222,35 @@
                                     </StackPanel>
                                 </Border>
 
-                                <!-- Preset + Start Buttons -->
-                                <Grid Grid.Row="4" Margin="0,0,0,6">
+                                <!-- Preset -->
+                                <Grid Grid.Row="4" Margin="0,0,0,4">
                                     <Grid.ColumnDefinitions>
                                         <ColumnDefinition Width="*"/>
                                         <ColumnDefinition Width="Auto"/>
                                         <ColumnDefinition Width="Auto"/>
                                     </Grid.ColumnDefinitions>
-                                    <TextBox Height="30" FontSize="15" FontFamily="Consolas"
+                                    <TextBox Height="34" FontSize="18" FontFamily="Consolas"
                                              VerticalContentAlignment="Center" HorizontalContentAlignment="Center"
                                              Text="{Binding PresetDisplayText, UpdateSourceTrigger=PropertyChanged}"/>
-                                    <Button Grid.Column="1" Margin="4,0,0,0" Padding="10,0" Height="30" Content="По сумме"
+                                    <Button Grid.Column="1" Margin="4,0,0,0" Padding="12,0" Height="34" Content="СТАРТ (сумма)"
                                             Command="{Binding PostStartAmountCommand}" Style="{StaticResource RoundedBtn}"
-                                            Background="#3B82F6" Foreground="White" FontWeight="SemiBold"/>
-                                    <Button Grid.Column="2" Margin="4,0,0,0" Padding="10,0" Height="30" Content="По объёму"
+                                            Background="#16A34A" Foreground="White" FontWeight="Bold" FontSize="13"/>
+                                    <Button Grid.Column="2" Margin="4,0,0,0" Padding="12,0" Height="34" Content="СТАРТ (объём)"
                                             Command="{Binding PostStartVolumeCommand}" Style="{StaticResource RoundedBtn}"
-                                            Background="#8B5CF6" Foreground="White" FontWeight="SemiBold"/>
+                                            Background="#2563EB" Foreground="White" FontWeight="Bold" FontSize="13"/>
                                 </Grid>
 
-                                <!-- Command Buttons -->
-                                <WrapPanel Grid.Row="5" Margin="0,0,0,4">
+                                <!-- СТОП -->
+                                <Button Grid.Row="5" Height="38" Margin="0,0,0,6" Content="СТОП"
+                                        Command="{Binding PostCancelCommand}" Style="{StaticResource RoundedBtn}"
+                                        Background="#DC2626" Foreground="White" FontWeight="Bold" FontSize="16"/>
+
+                                <!-- Service Buttons -->
+                                <WrapPanel Grid.Row="6" Margin="0,0,0,4">
                                     <Button Margin="0,0,3,3" Padding="8,4" Content="Status" Command="{Binding PostStatusCommand}"
                                             Style="{StaticResource RoundedBtn}" Background="#F3F4F6"/>
                                     <Button Margin="0,0,3,3" Padding="8,4" Content="Totals" Command="{Binding PostTotalsCommand}"
                                             Style="{StaticResource RoundedBtn}" Background="#F3F4F6"/>
-                                    <Button Margin="0,0,3,3" Padding="8,4" Content="Cancel" Command="{Binding PostCancelCommand}"
-                                            Style="{StaticResource RoundedBtn}" Background="#FEF2F2" Foreground="#DC2626"/>
                                     <Button Margin="0,0,3,3" Padding="8,4" Content="Lock" Command="{Binding PostLockCommand}"
                                             Style="{StaticResource RoundedBtn}" Background="#FEF3C7" Foreground="#92400E"/>
                                     <Button Margin="0,0,3,3" Padding="8,4" Content="Release" Command="{Binding PostReleaseCommand}"
@@ -254,7 +258,7 @@
                                 </WrapPanel>
 
                                 <!-- Last Frame Info -->
-                                <StackPanel Grid.Row="6" VerticalAlignment="Bottom">
+                                <StackPanel Grid.Row="7" VerticalAlignment="Bottom">
                                     <TextBlock Text="{Binding LastPayload}" FontFamily="Consolas" FontSize="10" Foreground="#9CA3AF"
                                                TextTrimming="CharacterEllipsis" ToolTip="{Binding LastPayload}"/>
                                     <TextBlock Text="{Binding LastUpdateText}" FontFamily="Consolas" FontSize="10" Foreground="#9CA3AF"/>
