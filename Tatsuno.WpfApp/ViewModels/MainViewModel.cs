@@ -6,6 +6,7 @@ using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using System.Windows;
+using System.Windows.Media;
 using Tatsuno.Model;
 using Tatsuno.Protocol;
 using Tatsuno.Transport.Serial;
@@ -134,6 +135,7 @@ public sealed class MainViewModel : ObservableObject
                 ConnectCommand.RaiseCanExecuteChanged();
                 DisconnectCommand.RaiseCanExecuteChanged();
                 ApplyPostsCommand.RaiseCanExecuteChanged();
+                Raise(nameof(ConnectionStatusBrush));
             }
         }
     }
@@ -236,6 +238,10 @@ public sealed class MainViewModel : ObservableObject
     public string DashboardControllabilityText => DashboardPost?.ControllabilityText ?? "—";
     public ObservableCollection<NozzleViewModel> DashboardNozzles => DashboardPost?.Nozzles ?? new ObservableCollection<NozzleViewModel>();
 
+    public Brush ConnectionStatusBrush => IsConnected
+        ? new SolidColorBrush(Color.FromRgb(34, 197, 94))
+        : new SolidColorBrush(Color.FromRgb(239, 68, 68));
+
     public void OnWindowClosing()
     {
         Disconnect();
@@ -262,6 +268,13 @@ public sealed class MainViewModel : ObservableObject
         {
             var post = new PostViewModel(i, i.ToString(), 3);
             post.Selected += HandlePostSelected;
+            post.StartAmountRequested += HandlePostStartAmount;
+            post.StartVolumeRequested += HandlePostStartVolume;
+            post.CancelRequested += HandlePostCancel;
+            post.StatusRequested += HandlePostStatus;
+            post.TotalsRequested += HandlePostTotals;
+            post.LockRequested += HandlePostLock;
+            post.ReleaseRequested += HandlePostRelease;
             post.ApplySnapshot();
             Posts.Add(post);
         }
@@ -561,6 +574,72 @@ public sealed class MainViewModel : ObservableObject
         if (DashboardPost is null) return;
         DashboardPost.Engine.Enqueue(TatsunoCodec.BuildReleasePumpLockPayload(), TatsunoCommandKind.ReleasePumpLock, "release pump lock");
         AddLog("SYS", $"Queue {DashboardPost.Header}: release lock");
+    }
+
+    private void HandlePostStartAmount(PostViewModel post)
+    {
+        NozzleViewModel? nozzle = post.SelectedNozzle;
+        if (nozzle is null) return;
+
+        int amountRaw = TatsunoValueFormatter.ParseDisplayedMoneyToRaw(post.PresetDisplayText);
+        int priceRaw = nozzle.ConfiguredPriceRaw;
+        string payload = TatsunoCodec.BuildAuthorizeSinglePricePayload(
+            TatsunoAuthorizationTerm.PresetChangeForbidden,
+            TatsunoPresetKind.Amount,
+            amountRaw,
+            TatsunoUnitPriceFlag.Cash,
+            priceRaw);
+
+        post.Engine.Enqueue(payload, TatsunoCommandKind.AuthorizeSinglePrice, $"authorize amount nozzle {nozzle.Number} amount={post.PresetDisplayText} price={nozzle.PriceText}");
+        AddLog("SYS", $"Queue {post.Header}: amount preset {post.PresetDisplayText} nozzle {nozzle.Number}");
+    }
+
+    private void HandlePostStartVolume(PostViewModel post)
+    {
+        NozzleViewModel? nozzle = post.SelectedNozzle;
+        if (nozzle is null) return;
+
+        int volumeRaw = TatsunoValueFormatter.ParseDisplayedVolumeToRaw(post.PresetDisplayText);
+        int priceRaw = nozzle.ConfiguredPriceRaw;
+        string payload = TatsunoCodec.BuildAuthorizeSinglePricePayload(
+            TatsunoAuthorizationTerm.PresetChangeForbidden,
+            TatsunoPresetKind.Volume,
+            volumeRaw,
+            TatsunoUnitPriceFlag.Cash,
+            priceRaw);
+
+        post.Engine.Enqueue(payload, TatsunoCommandKind.AuthorizeSinglePrice, $"authorize volume nozzle {nozzle.Number} volume={post.PresetDisplayText} price={nozzle.PriceText}");
+        AddLog("SYS", $"Queue {post.Header}: volume preset {post.PresetDisplayText} nozzle {nozzle.Number}");
+    }
+
+    private void HandlePostCancel(PostViewModel post)
+    {
+        post.Engine.Enqueue(TatsunoCodec.BuildCancelAuthorizationPayload(), TatsunoCommandKind.CancelAuthorization, "cancel authorization");
+        AddLog("SYS", $"Queue {post.Header}: cancel authorization");
+    }
+
+    private void HandlePostStatus(PostViewModel post)
+    {
+        post.Engine.Enqueue(TatsunoCodec.BuildRequestStatusPayload(), TatsunoCommandKind.RequestStatus, "request status", allowedWhenUncontrollable: true);
+        AddLog("SYS", $"Queue {post.Header}: request status");
+    }
+
+    private void HandlePostTotals(PostViewModel post)
+    {
+        post.Engine.Enqueue(TatsunoCodec.BuildRequestTotalsPayload(), TatsunoCommandKind.RequestTotals, "request totals", allowedWhenUncontrollable: true);
+        AddLog("SYS", $"Queue {post.Header}: request totals");
+    }
+
+    private void HandlePostLock(PostViewModel post)
+    {
+        post.Engine.Enqueue(TatsunoCodec.BuildLockPumpPayload(), TatsunoCommandKind.LockPump, "lock pump");
+        AddLog("SYS", $"Queue {post.Header}: lock pump");
+    }
+
+    private void HandlePostRelease(PostViewModel post)
+    {
+        post.Engine.Enqueue(TatsunoCodec.BuildReleasePumpLockPayload(), TatsunoCommandKind.ReleasePumpLock, "release pump lock");
+        AddLog("SYS", $"Queue {post.Header}: release lock");
     }
 
     private void UpdateLiftedInfo()
