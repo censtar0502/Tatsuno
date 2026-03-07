@@ -1,3 +1,4 @@
+using System;
 using System.Collections.ObjectModel;
 using System.Linq;
 using System.Windows.Media;
@@ -18,6 +19,7 @@ public sealed class PostViewModel : ObservableObject
     private string _activeNozzleText = "—";
     private string _lastPayload = string.Empty;
     private string _lastUpdateText = "—";
+    private string _presetDisplayText = "12500";
 
     public PostViewModel(int postIndex, string addressLabel, int nozzlesCount)
     {
@@ -41,15 +43,37 @@ public sealed class PostViewModel : ObservableObject
         }
 
         SelectCommand = new RelayCommand(() => Selected?.Invoke(this));
+        PostStartAmountCommand = new RelayCommand(() => StartAmountRequested?.Invoke(this));
+        PostStartVolumeCommand = new RelayCommand(() => StartVolumeRequested?.Invoke(this));
+        PostCancelCommand = new RelayCommand(() => CancelRequested?.Invoke(this));
+        PostStatusCommand = new RelayCommand(() => StatusRequested?.Invoke(this));
+        PostTotalsCommand = new RelayCommand(() => TotalsRequested?.Invoke(this));
+        PostLockCommand = new RelayCommand(() => LockRequested?.Invoke(this));
+        PostReleaseCommand = new RelayCommand(() => ReleaseRequested?.Invoke(this));
     }
 
     public event Action<PostViewModel>? Selected;
+    public event Action<PostViewModel>? StartAmountRequested;
+    public event Action<PostViewModel>? StartVolumeRequested;
+    public event Action<PostViewModel>? CancelRequested;
+    public event Action<PostViewModel>? StatusRequested;
+    public event Action<PostViewModel>? TotalsRequested;
+    public event Action<PostViewModel>? LockRequested;
+    public event Action<PostViewModel>? ReleaseRequested;
 
     public TatsunoControllerEngine Engine { get; }
     public int PostIndex { get; }
     public string AddressLabel { get; }
     public ObservableCollection<NozzleViewModel> Nozzles { get; }
+
     public RelayCommand SelectCommand { get; }
+    public RelayCommand PostStartAmountCommand { get; }
+    public RelayCommand PostStartVolumeCommand { get; }
+    public RelayCommand PostCancelCommand { get; }
+    public RelayCommand PostStatusCommand { get; }
+    public RelayCommand PostTotalsCommand { get; }
+    public RelayCommand PostLockCommand { get; }
+    public RelayCommand PostReleaseCommand { get; }
 
     public string Header => $"Пост {PostIndex} / Адрес {AddressLabel}";
 
@@ -60,22 +84,40 @@ public sealed class PostViewModel : ObservableObject
         {
             if (SetProperty(ref _isSelected, value))
             {
-                Raise(nameof(CardBrush));
                 Raise(nameof(BorderBrush));
             }
         }
     }
 
-    public Brush CardBrush => IsSelected
-        ? new SolidColorBrush(Color.FromRgb(64, 111, 165))
-        : new SolidColorBrush(Color.FromRgb(78, 114, 156));
+    public Brush BorderBrush => IsSelected
+        ? new SolidColorBrush(Color.FromRgb(59, 130, 246))
+        : new SolidColorBrush(Color.FromRgb(229, 231, 235));
 
-    public Brush BorderBrush => new SolidColorBrush(Color.FromRgb(241, 178, 0));
+    public Brush StatusBrush => _statusText switch
+    {
+        "ГОТОВ" => new SolidColorBrush(Color.FromRgb(34, 197, 94)),
+        "ПИСТОЛЕТ ПОДНЯТ" => new SolidColorBrush(Color.FromRgb(234, 179, 8)),
+        "ОТПУСК" => new SolidColorBrush(Color.FromRgb(59, 130, 246)),
+        "ЗАВЕРШЕНО" => new SolidColorBrush(Color.FromRgb(107, 114, 128)),
+        _ => new SolidColorBrush(Color.FromRgb(156, 163, 175))
+    };
+
+    public string PresetDisplayText
+    {
+        get => _presetDisplayText;
+        set => SetProperty(ref _presetDisplayText, value);
+    }
 
     public string StatusText
     {
         get => _statusText;
-        private set => SetProperty(ref _statusText, value);
+        private set
+        {
+            if (SetProperty(ref _statusText, value))
+            {
+                Raise(nameof(StatusBrush));
+            }
+        }
     }
 
     public string ControllabilityText
