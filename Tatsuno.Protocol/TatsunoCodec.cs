@@ -58,8 +58,8 @@ public static class TatsunoCodec
 
     public static string BuildRequestStatusPayload() => "@A15";
     public static string BuildRequestTotalsPayload() => "@A20";
-    public static string BuildCancelAuthorizationPayload() => "@A19";
-    public static string BuildLockPumpPayload() => "@A43";
+    public static string BuildCancelAuthorizationPayload() => "@A12";
+    public static string BuildLockPumpPayload() => "@A13";
     public static string BuildReleasePumpLockPayload() => "@A14";
 
     public static string BuildAuthorizeSinglePricePayload(
