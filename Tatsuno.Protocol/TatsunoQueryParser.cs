@@ -15,7 +15,9 @@ public static class TatsunoQueryParser
             return false;
         }
 
-        if (!payload.StartsWith("@Q", StringComparison.Ordinal))
+        // Position 0 = station address (@ for addr1, A for addr2, B for addr3, etc.)
+        // Position 1 = 'Q' (query marker)
+        if (payload[1] != 'Q')
         {
             return false;
         }

@@ -47,9 +47,14 @@ public sealed class TatsunoControllerEngine
     public TatsunoControllerEngine(string addressLabel, int nozzlesCount)
     {
         Snapshot = new PostSnapshot(addressLabel, nozzlesCount);
+        StationAddress = int.TryParse(addressLabel, out int addrNum)
+            ? TatsunoCodec.StationAddressByte(addrNum)
+            : (byte)'@';
     }
 
     public PostSnapshot Snapshot { get; }
+    public byte StationAddress { get; }
+    public char StationAddressChar => (char)StationAddress;
     public TatsunoLinkState LinkState { get; private set; } = TatsunoLinkState.Idle;
     public TimeSpan PollInterval { get; set; } = TimeSpan.FromMilliseconds(250);
     public TimeSpan ReplyTimeout { get; set; } = TimeSpan.FromMilliseconds(700);
@@ -72,7 +77,7 @@ public sealed class TatsunoControllerEngine
                 _current = _queue.Dequeue();
                 LinkState = TatsunoLinkState.WaitingSelectAck0;
                 _lastStateChangeUtc = utcNow;
-                return new TatsunoControllerAction(TatsunoControllerActionKind.SelectHandshake, TatsunoCodec.BuildActionHandshake(), $"TX {Snapshot.AddressLabel}: {candidate.Description} handshake");
+                return new TatsunoControllerAction(TatsunoControllerActionKind.SelectHandshake, TatsunoCodec.BuildActionHandshake(StationAddress), $"TX {Snapshot.AddressLabel}: {candidate.Description} handshake");
             }
         }
 
@@ -81,7 +86,7 @@ public sealed class TatsunoControllerEngine
             LinkState = TatsunoLinkState.WaitingPollResponse;
             _lastPollUtc = utcNow;
             _lastStateChangeUtc = utcNow;
-            return new TatsunoControllerAction(TatsunoControllerActionKind.Poll, TatsunoCodec.BuildPollRequest(), $"TX {Snapshot.AddressLabel}: poll");
+            return new TatsunoControllerAction(TatsunoControllerActionKind.Poll, TatsunoCodec.BuildPollRequest(StationAddress), $"TX {Snapshot.AddressLabel}: poll");
         }
 
         return TatsunoControllerAction.None;
@@ -98,7 +103,12 @@ public sealed class TatsunoControllerEngine
         LinkState = TatsunoLinkState.WaitingSelectAck1;
         _lastStateChangeUtc = utcNow;
         description = $"TX {Snapshot.AddressLabel}: {_current.Description}";
-        return TatsunoCodec.BuildFrame(_current.Payload);
+        string payload = _current.Payload;
+        if (payload.Length > 0 && payload[0] == '@')
+        {
+            payload = StationAddressChar + payload.Substring(1);
+        }
+        return TatsunoCodec.BuildFrame(payload);
     }
 
     public void HandleDle1(DateTime utcNow)

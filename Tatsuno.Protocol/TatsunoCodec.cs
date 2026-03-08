@@ -7,14 +7,16 @@ namespace Tatsuno.Protocol;
 
 public static class TatsunoCodec
 {
-    public static byte[] BuildPollRequest()
+    public static byte StationAddressByte(int addressNumber) => (byte)(0x3F + addressNumber);
+
+    public static byte[] BuildPollRequest(byte stationAddress)
     {
-        return new[] { TatsunoControlBytes.EOT, (byte)'@', (byte)'Q', TatsunoControlBytes.ENQ };
+        return new[] { TatsunoControlBytes.EOT, stationAddress, (byte)'Q', TatsunoControlBytes.ENQ };
     }
 
-    public static byte[] BuildActionHandshake()
+    public static byte[] BuildActionHandshake(byte stationAddress)
     {
-        return new[] { TatsunoControlBytes.EOT, (byte)'@', (byte)'A', TatsunoControlBytes.ENQ };
+        return new[] { TatsunoControlBytes.EOT, stationAddress, (byte)'A', TatsunoControlBytes.ENQ };
     }
 
     public static byte[] BuildAck1()

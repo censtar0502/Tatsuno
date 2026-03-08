@@ -75,7 +75,7 @@ public sealed class PostViewModel : ObservableObject
     public RelayCommand PostLockCommand { get; }
     public RelayCommand PostReleaseCommand { get; }
 
-    public string Header => $"Пост {PostIndex} / Адрес {AddressLabel}";
+    public string Header => $"Пистолет {PostIndex} (Адрес {AddressLabel})";
 
     public bool IsSelected
     {

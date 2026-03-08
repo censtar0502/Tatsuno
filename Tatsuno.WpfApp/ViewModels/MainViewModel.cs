@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.Collections.ObjectModel;
 using System.IO;
 using System.IO.Ports;
@@ -264,9 +265,11 @@ public sealed class MainViewModel : ObservableObject
     private void ApplyPosts()
     {
         Posts.Clear();
+        // 1 ТРК with 3 nozzles, each nozzle at its own RS-485 address (1, 2, 3)
+        // Each "post" = one nozzle/address with its own engine
         for (int i = 1; i <= PostsCount; i++)
         {
-            var post = new PostViewModel(i, i.ToString(), 3);
+            var post = new PostViewModel(i, i.ToString(), 1);
             post.Selected += HandlePostSelected;
             post.StartAmountRequested += HandlePostStartAmount;
             post.StartVolumeRequested += HandlePostStartVolume;
@@ -508,14 +511,17 @@ public sealed class MainViewModel : ObservableObject
 
         int amountRaw = TatsunoValueFormatter.ParseDisplayedMoneyToRaw(PresetDisplayText);
         int priceRaw = nozzle.ConfiguredPriceRaw;
-        string payload = TatsunoCodec.BuildAuthorizeSinglePricePayload(
+        var products = new List<(TatsunoUnitPriceFlag Flag, int UnitPriceRaw)>
+        {
+            (TatsunoUnitPriceFlag.Credit, priceRaw)
+        };
+        string payload = TatsunoCodec.BuildAuthorizeMultiPricePayload(
             TatsunoAuthorizationTerm.PresetChangeForbidden,
             TatsunoPresetKind.Amount,
             amountRaw,
-            TatsunoUnitPriceFlag.Cash,
-            priceRaw);
+            products);
 
-        post.Engine.Enqueue(payload, TatsunoCommandKind.AuthorizeSinglePrice, $"authorize amount nozzle {nozzle.Number} amount={PresetDisplayText} price={nozzle.PriceText}");
+        post.Engine.Enqueue(payload, TatsunoCommandKind.AuthorizeMultiPrice, $"authorize amount nozzle {nozzle.Number} amount={PresetDisplayText} price={nozzle.PriceText}");
         AddLog("SYS", $"Queue {post.Header}: amount preset {PresetDisplayText} nozzle {nozzle.Number}");
     }
 
@@ -530,14 +536,17 @@ public sealed class MainViewModel : ObservableObject
 
         int volumeRaw = TatsunoValueFormatter.ParseDisplayedVolumeToRaw(PresetDisplayText);
         int priceRaw = nozzle.ConfiguredPriceRaw;
-        string payload = TatsunoCodec.BuildAuthorizeSinglePricePayload(
-            TatsunoAuthorizationTerm.PresetChangeForbidden,
+        var products = new List<(TatsunoUnitPriceFlag Flag, int UnitPriceRaw)>
+        {
+            (TatsunoUnitPriceFlag.Credit, priceRaw)
+        };
+        string payload = TatsunoCodec.BuildAuthorizeMultiPricePayload(
+            TatsunoAuthorizationTerm.VolumeLimited,
             TatsunoPresetKind.Volume,
             volumeRaw,
-            TatsunoUnitPriceFlag.Cash,
-            priceRaw);
+            products);
 
-        post.Engine.Enqueue(payload, TatsunoCommandKind.AuthorizeSinglePrice, $"authorize volume nozzle {nozzle.Number} volume={PresetDisplayText} price={nozzle.PriceText}");
+        post.Engine.Enqueue(payload, TatsunoCommandKind.AuthorizeMultiPrice, $"authorize volume nozzle {nozzle.Number} volume={PresetDisplayText} price={nozzle.PriceText}");
         AddLog("SYS", $"Queue {post.Header}: volume preset {PresetDisplayText} nozzle {nozzle.Number}");
     }
 
@@ -583,14 +592,18 @@ public sealed class MainViewModel : ObservableObject
 
         int amountRaw = TatsunoValueFormatter.ParseDisplayedMoneyToRaw(post.PresetDisplayText);
         int priceRaw = nozzle.ConfiguredPriceRaw;
-        string payload = TatsunoCodec.BuildAuthorizeSinglePricePayload(
+        // Use A11 (multi-price) per real hardware protocol log
+        var products = new List<(TatsunoUnitPriceFlag Flag, int UnitPriceRaw)>
+        {
+            (TatsunoUnitPriceFlag.Credit, priceRaw)
+        };
+        string payload = TatsunoCodec.BuildAuthorizeMultiPricePayload(
             TatsunoAuthorizationTerm.PresetChangeForbidden,
             TatsunoPresetKind.Amount,
             amountRaw,
-            TatsunoUnitPriceFlag.Cash,
-            priceRaw);
+            products);
 
-        post.Engine.Enqueue(payload, TatsunoCommandKind.AuthorizeSinglePrice, $"authorize amount nozzle {nozzle.Number} amount={post.PresetDisplayText} price={nozzle.PriceText}");
+        post.Engine.Enqueue(payload, TatsunoCommandKind.AuthorizeMultiPrice, $"authorize amount nozzle {nozzle.Number} amount={post.PresetDisplayText} price={nozzle.PriceText}");
         AddLog("SYS", $"Queue {post.Header}: amount preset {post.PresetDisplayText} nozzle {nozzle.Number}");
     }
 
@@ -601,14 +614,18 @@ public sealed class MainViewModel : ObservableObject
 
         int volumeRaw = TatsunoValueFormatter.ParseDisplayedVolumeToRaw(post.PresetDisplayText);
         int priceRaw = nozzle.ConfiguredPriceRaw;
-        string payload = TatsunoCodec.BuildAuthorizeSinglePricePayload(
-            TatsunoAuthorizationTerm.PresetChangeForbidden,
+        // Use A11 (multi-price) per real hardware protocol log
+        var products = new List<(TatsunoUnitPriceFlag Flag, int UnitPriceRaw)>
+        {
+            (TatsunoUnitPriceFlag.Credit, priceRaw)
+        };
+        string payload = TatsunoCodec.BuildAuthorizeMultiPricePayload(
+            TatsunoAuthorizationTerm.VolumeLimited,
             TatsunoPresetKind.Volume,
             volumeRaw,
-            TatsunoUnitPriceFlag.Cash,
-            priceRaw);
+            products);
 
-        post.Engine.Enqueue(payload, TatsunoCommandKind.AuthorizeSinglePrice, $"authorize volume nozzle {nozzle.Number} volume={post.PresetDisplayText} price={nozzle.PriceText}");
+        post.Engine.Enqueue(payload, TatsunoCommandKind.AuthorizeMultiPrice, $"authorize volume nozzle {nozzle.Number} volume={post.PresetDisplayText} price={nozzle.PriceText}");
         AddLog("SYS", $"Queue {post.Header}: volume preset {post.PresetDisplayText} nozzle {nozzle.Number}");
     }
 

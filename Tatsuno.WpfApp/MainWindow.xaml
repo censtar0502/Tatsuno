@@ -115,7 +115,7 @@
                     <Button Height="26" Padding="12,0" Content="Отключить" Command="{Binding DisconnectCommand}"
                             Style="{StaticResource RoundedBtn}" Background="#EF4444" Foreground="White" FontWeight="SemiBold" Margin="0,0,16,0"/>
 
-                    <TextBlock Text="Постов:" VerticalAlignment="Center" Margin="0,0,4,0"/>
+                    <TextBlock Text="Адресов:" VerticalAlignment="Center" Margin="0,0,4,0"/>
                     <TextBox Width="32" Height="26" Text="{Binding PostsCount}" VerticalContentAlignment="Center" HorizontalContentAlignment="Center" Margin="0,0,4,0"/>
                     <Button Height="26" Padding="8,0" Content="Применить" Command="{Binding ApplyPostsCommand}"
                             Style="{StaticResource RoundedBtn}" Background="#F3F4F6" Margin="0,0,16,0"/>
@@ -125,7 +125,7 @@
                 </WrapPanel>
             </Border>
 
-            <!-- Posts -->
+            <!-- ТРК Tatsuno — пистолеты по адресам -->
             <ItemsControl Grid.Row="1" ItemsSource="{Binding Posts}">
                 <ItemsControl.ItemsPanel>
                     <ItemsPanelTemplate>
