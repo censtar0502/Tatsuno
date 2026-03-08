@@ -172,7 +172,7 @@
                                                         Content="{Binding ProductName}" Style="{StaticResource NozzleBtn}"/>
                                                 <TextBox Grid.Column="1" Margin="4,0" FontSize="13" FontFamily="Consolas"
                                                          VerticalContentAlignment="Center" HorizontalContentAlignment="Center"
-                                                         Text="{Binding PriceText, UpdateSourceTrigger=PropertyChanged}"/>
+                                                         Text="{Binding PriceText, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"/>
                                                 <StackPanel Grid.Column="2" VerticalAlignment="Center">
                                                     <TextBlock Text="{Binding TotalsVolumeText}" FontSize="10" FontFamily="Consolas" HorizontalAlignment="Right" Foreground="#9CA3AF"/>
                                                     <TextBlock Text="{Binding TotalsAmountText}" FontSize="10" FontFamily="Consolas" HorizontalAlignment="Right" Foreground="#9CA3AF"/>

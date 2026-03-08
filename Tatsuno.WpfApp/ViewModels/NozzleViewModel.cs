@@ -17,7 +17,7 @@ public sealed class NozzleViewModel : ObservableObject
     {
         Number = number;
         _productName = productName;
-        _priceText = configuredPriceDisplay.ToString("N0", new System.Globalization.CultureInfo("ru-RU"));
+        _priceText = configuredPriceDisplay.ToString();
         SelectCommand = new RelayCommand(() => Selected?.Invoke(this));
     }
 
@@ -88,18 +88,7 @@ public sealed class NozzleViewModel : ObservableObject
         IsLifted = snapshot.IsLifted;
         TotalsVolumeText = TatsunoValueFormatter.FormatVolume(snapshot.TotalVolumeRaw);
         TotalsAmountText = TatsunoValueFormatter.FormatMoney(snapshot.TotalAmountRaw);
-        if (snapshot.ProductCode != TatsunoProductCode.None)
-        {
-            ProductName = snapshot.ProductCode switch
-            {
-                TatsunoProductCode.HighOctane => "A-80",
-                TatsunoProductCode.Regular => "A-92",
-                TatsunoProductCode.Diesel => "ДТ",
-                TatsunoProductCode.Kerosene => "Керосин",
-                TatsunoProductCode.LeadedHighOctane => "A-80 Lead",
-                TatsunoProductCode.LeadedRegular => "A-92 Lead",
-                _ => ProductName
-            };
-        }
+        // ProductName is user-configured and must NOT be overwritten by protocol ProductCode.
+        // The ТРК product codes may not match the user's naming convention.
     }
 }
