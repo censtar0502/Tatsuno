@@ -216,7 +216,11 @@ public sealed class PostViewModel : ObservableObject
             vm?.ApplySnapshot(nozzleSnapshot);
         }
 
-        if (snapshot.ActiveNozzleNumber > 0)
+        // Only auto-select nozzle when it's physically active (lifted or fueling).
+        // When NozzleStored/Finished, Q61 still reports last active nozzle number —
+        // don't override user's manual selection in that case.
+        if (snapshot.ActiveNozzleNumber > 0 &&
+            snapshot.Condition is TatsunoPumpCondition.NozzleLifted or TatsunoPumpCondition.Fuelling)
         {
             SelectNozzle(snapshot.ActiveNozzleNumber);
         }

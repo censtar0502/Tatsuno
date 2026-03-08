@@ -531,13 +531,13 @@ public sealed class MainViewModel : ObservableObject
         int amountRaw = TatsunoValueFormatter.ParseDisplayedMoneyToRaw(PresetDisplayText);
         var products = BuildSelectedNozzlePrice(post, nozzle);
         string payload = TatsunoCodec.BuildAuthorizeMultiPricePayload(
-            TatsunoAuthorizationTerm.PresetChangeForbidden,
+            TatsunoAuthorizationTerm.VolumeLimited,
             TatsunoPresetKind.Amount,
             amountRaw,
             products);
 
-        post.Engine.Enqueue(payload, TatsunoCommandKind.AuthorizeMultiPrice, $"authorize amount nozzle {nozzle.Number} amount={PresetDisplayText}");
-        AddLog("SYS", $"Queue {post.Header}: amount preset {PresetDisplayText} nozzle {nozzle.Number}");
+        post.Engine.Enqueue(payload, TatsunoCommandKind.AuthorizeMultiPrice, $"authorize amount nozzle {nozzle.Number} amount={PresetDisplayText} raw={amountRaw}");
+        AddLog("SYS", $"Queue {post.Header}: amount preset {PresetDisplayText} (raw={amountRaw}) nozzle {nozzle.Number} price={nozzle.ConfiguredPriceRaw}");
     }
 
     private void StartVolumePreset()
@@ -623,13 +623,13 @@ public sealed class MainViewModel : ObservableObject
         int amountRaw = TatsunoValueFormatter.ParseDisplayedMoneyToRaw(post.PresetDisplayText);
         var products = BuildSelectedNozzlePrice(post, nozzle);
         string payload = TatsunoCodec.BuildAuthorizeMultiPricePayload(
-            TatsunoAuthorizationTerm.PresetChangeForbidden,
+            TatsunoAuthorizationTerm.VolumeLimited,
             TatsunoPresetKind.Amount,
             amountRaw,
             products);
 
-        post.Engine.Enqueue(payload, TatsunoCommandKind.AuthorizeMultiPrice, $"authorize amount nozzle {nozzle.Number} amount={post.PresetDisplayText}");
-        AddLog("SYS", $"Queue {post.Header}: amount preset {post.PresetDisplayText} nozzle {nozzle.Number}");
+        post.Engine.Enqueue(payload, TatsunoCommandKind.AuthorizeMultiPrice, $"authorize amount nozzle {nozzle.Number} amount={post.PresetDisplayText} raw={amountRaw}");
+        AddLog("SYS", $"Queue {post.Header}: amount preset {post.PresetDisplayText} (raw={amountRaw}) nozzle {nozzle.Number} price={nozzle.ConfiguredPriceRaw}");
     }
 
     private void HandlePostStartVolume(PostViewModel post)
