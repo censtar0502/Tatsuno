@@ -31,7 +31,7 @@ public sealed class PostViewModel : ObservableObject
         Nozzles = new ObservableCollection<NozzleViewModel>();
 
         string[] defaults = ["A-80", "A-92", "A-95", "ДТ", "Керосин", "Product-6"];
-        int[] prices = [8500, 12500, 13000, 0, 0, 0];
+        int[] prices = [8500, 12500, 14000, 0, 0, 0];
         for (int i = 1; i <= nozzlesCount; i++)
         {
             var nozzle = new NozzleViewModel(i, defaults.ElementAtOrDefault(i - 1) ?? $"Пистолет-{i}", prices.ElementAtOrDefault(i - 1));
