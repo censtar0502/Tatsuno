@@ -8,6 +8,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using System.Windows;
 using System.Windows.Media;
+using System.Windows.Threading;
 using Tatsuno.Model;
 using Tatsuno.Protocol;
 using Tatsuno.Transport.Serial;
@@ -17,8 +18,11 @@ namespace Tatsuno.WpfApp.ViewModels;
 
 public sealed class MainViewModel : ObservableObject
 {
+    private static readonly TimeSpan CommsTimeout = TimeSpan.FromSeconds(3);
+
     private readonly object _sync = new();
     private readonly TatsunoStreamDecoder _decoder = new();
+    private readonly DispatcherTimer _watchdog;
     private SerialPortSession? _session;
     private CancellationTokenSource? _pollCts;
     private StreamWriter? _fileLog;
@@ -30,7 +34,7 @@ public sealed class MainViewModel : ObservableObject
     private Parity _parity = Parity.Even;
     private int _dataBits = 8;
     private StopBits _stopBits = StopBits.One;
-    private int _postsCount = 3;
+    private int _postsCount = 1;
     private bool _isConnected;
     private string _pollState = "Отключено";
     private string _liftedInfo = "—";
@@ -61,6 +65,9 @@ public sealed class MainViewModel : ObservableObject
         RequestTotalsCommand = new RelayCommand(QueueTotals, () => DashboardPost is not null);
         LockPumpCommand = new RelayCommand(QueueLockPump, () => DashboardPost is not null);
         ReleasePumpCommand = new RelayCommand(QueueReleasePump, () => DashboardPost is not null);
+
+        _watchdog = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(1500) };
+        _watchdog.Tick += OnWatchdogTick;
 
         RefreshPorts();
         ApplyPosts();
@@ -265,24 +272,21 @@ public sealed class MainViewModel : ObservableObject
     private void ApplyPosts()
     {
         Posts.Clear();
-        // 1 ТРК with 3 nozzles, each nozzle at its own RS-485 address (1, 2, 3)
-        // Each "post" = one nozzle/address with its own engine
-        for (int i = 1; i <= PostsCount; i++)
-        {
-            var post = new PostViewModel(i, i.ToString(), 1);
-            post.Selected += HandlePostSelected;
-            post.StartAmountRequested += HandlePostStartAmount;
-            post.StartVolumeRequested += HandlePostStartVolume;
-            post.CancelRequested += HandlePostCancel;
-            post.StatusRequested += HandlePostStatus;
-            post.TotalsRequested += HandlePostTotals;
-            post.LockRequested += HandlePostLock;
-            post.ReleaseRequested += HandlePostRelease;
-            post.ApplySnapshot();
-            Posts.Add(post);
-        }
+        // 1 ТРК (side A) with 3 nozzles, all at ONE RS-485 address
+        // Only one nozzle can dispense at a time
+        var post = new PostViewModel(1, "1", 3);
+        post.Selected += HandlePostSelected;
+        post.StartAmountRequested += HandlePostStartAmount;
+        post.StartVolumeRequested += HandlePostStartVolume;
+        post.CancelRequested += HandlePostCancel;
+        post.StatusRequested += HandlePostStatus;
+        post.TotalsRequested += HandlePostTotals;
+        post.LockRequested += HandlePostLock;
+        post.ReleaseRequested += HandlePostRelease;
+        post.ApplySnapshot();
+        Posts.Add(post);
 
-        SelectedPost = Posts.FirstOrDefault();
+        SelectedPost = post;
         UpdateDashboardPost();
     }
 
@@ -316,7 +320,18 @@ public sealed class MainViewModel : ObservableObject
             OpenFileLog(SelectedPort!);
             IsConnected = true;
             PollState = "Опрос активен";
+            _watchdog.Start();
             AddLog("SYS", $"Connected {SelectedPort}");
+
+            // Request initial status and totals from ТРК immediately
+            PostViewModel? trk = Posts.FirstOrDefault();
+            if (trk is not null)
+            {
+                trk.Engine.Enqueue(TatsunoCodec.BuildRequestStatusPayload(), TatsunoCommandKind.RequestStatus, "initial status", allowedWhenUncontrollable: true);
+                trk.Engine.Enqueue(TatsunoCodec.BuildRequestTotalsPayload(), TatsunoCommandKind.RequestTotals, "initial totals", allowedWhenUncontrollable: true);
+                AddLog("SYS", "Queued initial A15 (status) + A20 (totals)");
+            }
+
             StartPolling();
         }
         catch (Exception ex)
@@ -328,6 +343,7 @@ public sealed class MainViewModel : ObservableObject
 
     private void Disconnect()
     {
+        _watchdog.Stop();
         StopPolling();
         CloseFileLog();
 
@@ -438,6 +454,9 @@ public sealed class MainViewModel : ObservableObject
                     continue;
                 }
 
+                // Mark comms alive on ANY successful RX from this ТРК
+                owner.MarkCommsReceived();
+
                 switch (item.Type)
                 {
                     case TatsunoRxItemType.ControlByte:
@@ -504,24 +523,17 @@ public sealed class MainViewModel : ObservableObject
     {
         PostViewModel? post = DashboardPost;
         NozzleViewModel? nozzle = post?.SelectedNozzle;
-        if (post is null || nozzle is null)
-        {
-            return;
-        }
+        if (post is null || nozzle is null) return;
 
         int amountRaw = TatsunoValueFormatter.ParseDisplayedMoneyToRaw(PresetDisplayText);
-        int priceRaw = nozzle.ConfiguredPriceRaw;
-        var products = new List<(TatsunoUnitPriceFlag Flag, int UnitPriceRaw)>
-        {
-            (TatsunoUnitPriceFlag.Credit, priceRaw)
-        };
+        var products = BuildAllProductPrices(post);
         string payload = TatsunoCodec.BuildAuthorizeMultiPricePayload(
             TatsunoAuthorizationTerm.PresetChangeForbidden,
             TatsunoPresetKind.Amount,
             amountRaw,
             products);
 
-        post.Engine.Enqueue(payload, TatsunoCommandKind.AuthorizeMultiPrice, $"authorize amount nozzle {nozzle.Number} amount={PresetDisplayText} price={nozzle.PriceText}");
+        post.Engine.Enqueue(payload, TatsunoCommandKind.AuthorizeMultiPrice, $"authorize amount nozzle {nozzle.Number} amount={PresetDisplayText}");
         AddLog("SYS", $"Queue {post.Header}: amount preset {PresetDisplayText} nozzle {nozzle.Number}");
     }
 
@@ -529,24 +541,17 @@ public sealed class MainViewModel : ObservableObject
     {
         PostViewModel? post = DashboardPost;
         NozzleViewModel? nozzle = post?.SelectedNozzle;
-        if (post is null || nozzle is null)
-        {
-            return;
-        }
+        if (post is null || nozzle is null) return;
 
         int volumeRaw = TatsunoValueFormatter.ParseDisplayedVolumeToRaw(PresetDisplayText);
-        int priceRaw = nozzle.ConfiguredPriceRaw;
-        var products = new List<(TatsunoUnitPriceFlag Flag, int UnitPriceRaw)>
-        {
-            (TatsunoUnitPriceFlag.Credit, priceRaw)
-        };
+        var products = BuildAllProductPrices(post);
         string payload = TatsunoCodec.BuildAuthorizeMultiPricePayload(
             TatsunoAuthorizationTerm.VolumeLimited,
             TatsunoPresetKind.Volume,
             volumeRaw,
             products);
 
-        post.Engine.Enqueue(payload, TatsunoCommandKind.AuthorizeMultiPrice, $"authorize volume nozzle {nozzle.Number} volume={PresetDisplayText} price={nozzle.PriceText}");
+        post.Engine.Enqueue(payload, TatsunoCommandKind.AuthorizeMultiPrice, $"authorize volume nozzle {nozzle.Number} volume={PresetDisplayText}");
         AddLog("SYS", $"Queue {post.Header}: volume preset {PresetDisplayText} nozzle {nozzle.Number}");
     }
 
@@ -585,25 +590,33 @@ public sealed class MainViewModel : ObservableObject
         AddLog("SYS", $"Queue {DashboardPost.Header}: release lock");
     }
 
+    /// <summary>Build product price list from all nozzles for A11 multi-price command.</summary>
+    private static List<(TatsunoUnitPriceFlag Flag, int UnitPriceRaw)> BuildAllProductPrices(PostViewModel post)
+    {
+        var products = new List<(TatsunoUnitPriceFlag Flag, int UnitPriceRaw)>();
+        foreach (NozzleViewModel n in post.Nozzles)
+        {
+            int raw = n.ConfiguredPriceRaw;
+            products.Add(raw > 0 ? (TatsunoUnitPriceFlag.Credit, raw) : (TatsunoUnitPriceFlag.Unknown, 0));
+        }
+        return products;
+    }
+
     private void HandlePostStartAmount(PostViewModel post)
     {
         NozzleViewModel? nozzle = post.SelectedNozzle;
         if (nozzle is null) return;
 
         int amountRaw = TatsunoValueFormatter.ParseDisplayedMoneyToRaw(post.PresetDisplayText);
-        int priceRaw = nozzle.ConfiguredPriceRaw;
-        // Use A11 (multi-price) per real hardware protocol log
-        var products = new List<(TatsunoUnitPriceFlag Flag, int UnitPriceRaw)>
-        {
-            (TatsunoUnitPriceFlag.Credit, priceRaw)
-        };
+        // A11 multi-price: send ALL product prices so ТРК picks correct one
+        var products = BuildAllProductPrices(post);
         string payload = TatsunoCodec.BuildAuthorizeMultiPricePayload(
             TatsunoAuthorizationTerm.PresetChangeForbidden,
             TatsunoPresetKind.Amount,
             amountRaw,
             products);
 
-        post.Engine.Enqueue(payload, TatsunoCommandKind.AuthorizeMultiPrice, $"authorize amount nozzle {nozzle.Number} amount={post.PresetDisplayText} price={nozzle.PriceText}");
+        post.Engine.Enqueue(payload, TatsunoCommandKind.AuthorizeMultiPrice, $"authorize amount nozzle {nozzle.Number} amount={post.PresetDisplayText}");
         AddLog("SYS", $"Queue {post.Header}: amount preset {post.PresetDisplayText} nozzle {nozzle.Number}");
     }
 
@@ -613,19 +626,15 @@ public sealed class MainViewModel : ObservableObject
         if (nozzle is null) return;
 
         int volumeRaw = TatsunoValueFormatter.ParseDisplayedVolumeToRaw(post.PresetDisplayText);
-        int priceRaw = nozzle.ConfiguredPriceRaw;
-        // Use A11 (multi-price) per real hardware protocol log
-        var products = new List<(TatsunoUnitPriceFlag Flag, int UnitPriceRaw)>
-        {
-            (TatsunoUnitPriceFlag.Credit, priceRaw)
-        };
+        // A11 multi-price: send ALL product prices so ТРК picks correct one
+        var products = BuildAllProductPrices(post);
         string payload = TatsunoCodec.BuildAuthorizeMultiPricePayload(
             TatsunoAuthorizationTerm.VolumeLimited,
             TatsunoPresetKind.Volume,
             volumeRaw,
             products);
 
-        post.Engine.Enqueue(payload, TatsunoCommandKind.AuthorizeMultiPrice, $"authorize volume nozzle {nozzle.Number} volume={post.PresetDisplayText} price={nozzle.PriceText}");
+        post.Engine.Enqueue(payload, TatsunoCommandKind.AuthorizeMultiPrice, $"authorize volume nozzle {nozzle.Number} volume={post.PresetDisplayText}");
         AddLog("SYS", $"Queue {post.Header}: volume preset {post.PresetDisplayText} nozzle {nozzle.Number}");
     }
 
@@ -689,6 +698,18 @@ public sealed class MainViewModel : ObservableObject
         Raise(nameof(DashboardLastPayload));
         Raise(nameof(DashboardLastUpdateText));
         Raise(nameof(DashboardControllabilityText));
+    }
+
+    private void OnWatchdogTick(object? sender, EventArgs e)
+    {
+        if (!IsConnected) return;
+
+        foreach (PostViewModel post in Posts)
+        {
+            post.CheckComms(CommsTimeout);
+        }
+
+        UpdateDashboardPost();
     }
 
     private void AddLog(string direction, string text)

@@ -115,11 +115,6 @@
                     <Button Height="26" Padding="12,0" Content="Отключить" Command="{Binding DisconnectCommand}"
                             Style="{StaticResource RoundedBtn}" Background="#EF4444" Foreground="White" FontWeight="SemiBold" Margin="0,0,16,0"/>
 
-                    <TextBlock Text="Адресов:" VerticalAlignment="Center" Margin="0,0,4,0"/>
-                    <TextBox Width="32" Height="26" Text="{Binding PostsCount}" VerticalContentAlignment="Center" HorizontalContentAlignment="Center" Margin="0,0,4,0"/>
-                    <Button Height="26" Padding="8,0" Content="Применить" Command="{Binding ApplyPostsCommand}"
-                            Style="{StaticResource RoundedBtn}" Background="#F3F4F6" Margin="0,0,16,0"/>
-
                     <TextBlock Text="Лог:" VerticalAlignment="Center" Foreground="#9CA3AF" Margin="0,0,4,0" FontSize="11"/>
                     <TextBlock Text="{Binding LogFilePath}" VerticalAlignment="Center" Foreground="#9CA3AF" FontSize="11"/>
                 </WrapPanel>
@@ -129,7 +124,7 @@
             <ItemsControl Grid.Row="1" ItemsSource="{Binding Posts}">
                 <ItemsControl.ItemsPanel>
                     <ItemsPanelTemplate>
-                        <UniformGrid Rows="1"/>
+                        <StackPanel/>
                     </ItemsPanelTemplate>
                 </ItemsControl.ItemsPanel>
                 <ItemsControl.ItemTemplate>

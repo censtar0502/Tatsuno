@@ -20,6 +20,8 @@ public sealed class PostViewModel : ObservableObject
     private string _lastPayload = string.Empty;
     private string _lastUpdateText = "—";
     private string _presetDisplayText = "12500";
+    private bool _commsLost;
+    private DateTime _lastCommsUtc = DateTime.MinValue;
 
     public PostViewModel(int postIndex, string addressLabel, int nozzlesCount)
     {
@@ -75,7 +77,7 @@ public sealed class PostViewModel : ObservableObject
     public RelayCommand PostLockCommand { get; }
     public RelayCommand PostReleaseCommand { get; }
 
-    public string Header => $"Пистолет {PostIndex} (Адрес {AddressLabel})";
+    public string Header => $"ТРК Сторона А (Адрес {AddressLabel})";
 
     public bool IsSelected
     {
@@ -93,14 +95,29 @@ public sealed class PostViewModel : ObservableObject
         ? new SolidColorBrush(Color.FromRgb(59, 130, 246))
         : new SolidColorBrush(Color.FromRgb(229, 231, 235));
 
-    public Brush StatusBrush => _statusText switch
+    public bool CommsLost
     {
-        "ГОТОВ" => new SolidColorBrush(Color.FromRgb(34, 197, 94)),
-        "ПИСТОЛЕТ ПОДНЯТ" => new SolidColorBrush(Color.FromRgb(234, 179, 8)),
-        "ОТПУСК" => new SolidColorBrush(Color.FromRgb(59, 130, 246)),
-        "ЗАВЕРШЕНО" => new SolidColorBrush(Color.FromRgb(107, 114, 128)),
-        _ => new SolidColorBrush(Color.FromRgb(156, 163, 175))
-    };
+        get => _commsLost;
+        private set
+        {
+            if (SetProperty(ref _commsLost, value))
+            {
+                Raise(nameof(StatusBrush));
+                Raise(nameof(StatusText));
+            }
+        }
+    }
+
+    public Brush StatusBrush => CommsLost
+        ? new SolidColorBrush(Color.FromRgb(239, 68, 68))  // Red for НЕТ СВЯЗИ
+        : _statusText switch
+        {
+            "ГОТОВ" => new SolidColorBrush(Color.FromRgb(34, 197, 94)),
+            "ПИСТОЛЕТ ПОДНЯТ" => new SolidColorBrush(Color.FromRgb(234, 179, 8)),
+            "ОТПУСК" => new SolidColorBrush(Color.FromRgb(59, 130, 246)),
+            "ЗАВЕРШЕНО" => new SolidColorBrush(Color.FromRgb(107, 114, 128)),
+            _ => new SolidColorBrush(Color.FromRgb(156, 163, 175))
+        };
 
     public string PresetDisplayText
     {
@@ -110,7 +127,7 @@ public sealed class PostViewModel : ObservableObject
 
     public string StatusText
     {
-        get => _statusText;
+        get => CommsLost ? "НЕТ СВЯЗИ" : _statusText;
         private set
         {
             if (SetProperty(ref _statusText, value))
@@ -213,6 +230,29 @@ public sealed class PostViewModel : ObservableObject
         {
             nozzle.IsSelected = nozzle.Number == number;
         }
+    }
+
+    /// <summary>Called on every successful RX from this ТРК (EOT, frame, etc.).</summary>
+    public void MarkCommsReceived()
+    {
+        _lastCommsUtc = DateTime.UtcNow;
+        CommsLost = false;
+    }
+
+    /// <summary>
+    /// Check if communication has been lost. Called periodically by watchdog timer.
+    /// If no successful RX for more than <paramref name="timeout"/>, marks as НЕТ СВЯЗИ.
+    /// </summary>
+    public void CheckComms(TimeSpan timeout)
+    {
+        if (_lastCommsUtc == DateTime.MinValue)
+        {
+            // Never received anything yet — if we're connected, it's lost
+            CommsLost = true;
+            return;
+        }
+
+        CommsLost = (DateTime.UtcNow - _lastCommsUtc) > timeout;
     }
 
     private void HandleNozzleSelected(NozzleViewModel nozzle)
