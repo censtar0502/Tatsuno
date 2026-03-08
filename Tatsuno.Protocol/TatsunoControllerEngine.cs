@@ -128,6 +128,7 @@ public sealed class TatsunoControllerEngine
             // EOT response to poll = ТРК connected, all nozzles stored, pump idle
             // Reference program uses this to show "ГОТОВ" (ready) status
             Snapshot.Condition = TatsunoPumpCondition.NozzleStored;
+            Snapshot.ActiveNozzleNumber = 0;  // No active nozzle when idle — don't override user selection
             Snapshot.LastUpdatedLocal = DateTime.Now;
 
             LinkState = TatsunoLinkState.Idle;
