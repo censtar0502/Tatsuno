@@ -536,8 +536,8 @@ public sealed class MainViewModel : ObservableObject
             amountRaw,
             products);
 
+        LogTransactionDetails("StartAmountPreset(Dashboard)", post, nozzle, "Amount", PresetDisplayText, amountRaw, payload);
         post.Engine.Enqueue(payload, TatsunoCommandKind.AuthorizeMultiPrice, $"authorize amount nozzle {nozzle.Number} amount={PresetDisplayText} raw={amountRaw}");
-        AddLog("SYS", $"Queue {post.Header}: amount preset {PresetDisplayText} (raw={amountRaw}) nozzle {nozzle.Number} price={nozzle.ConfiguredPriceRaw}");
     }
 
     private void StartVolumePreset()
@@ -554,8 +554,8 @@ public sealed class MainViewModel : ObservableObject
             volumeRaw,
             products);
 
+        LogTransactionDetails("StartVolumePreset(Dashboard)", post, nozzle, "Volume", PresetDisplayText, volumeRaw, payload);
         post.Engine.Enqueue(payload, TatsunoCommandKind.AuthorizeMultiPrice, $"authorize volume nozzle {nozzle.Number} volume={PresetDisplayText}");
-        AddLog("SYS", $"Queue {post.Header}: volume preset {PresetDisplayText} nozzle {nozzle.Number}");
     }
 
     private void QueueCancel()
@@ -628,8 +628,8 @@ public sealed class MainViewModel : ObservableObject
             amountRaw,
             products);
 
+        LogTransactionDetails("HandlePostStartAmount(Post)", post, nozzle, "Amount", post.PresetDisplayText, amountRaw, payload);
         post.Engine.Enqueue(payload, TatsunoCommandKind.AuthorizeMultiPrice, $"authorize amount nozzle {nozzle.Number} amount={post.PresetDisplayText} raw={amountRaw}");
-        AddLog("SYS", $"Queue {post.Header}: amount preset {post.PresetDisplayText} (raw={amountRaw}) nozzle {nozzle.Number} price={nozzle.ConfiguredPriceRaw}");
     }
 
     private void HandlePostStartVolume(PostViewModel post)
@@ -645,8 +645,8 @@ public sealed class MainViewModel : ObservableObject
             volumeRaw,
             products);
 
+        LogTransactionDetails("HandlePostStartVolume(Post)", post, nozzle, "Volume", post.PresetDisplayText, volumeRaw, payload);
         post.Engine.Enqueue(payload, TatsunoCommandKind.AuthorizeMultiPrice, $"authorize volume nozzle {nozzle.Number} volume={post.PresetDisplayText}");
-        AddLog("SYS", $"Queue {post.Header}: volume preset {post.PresetDisplayText} nozzle {nozzle.Number}");
     }
 
     private void HandlePostCancel(PostViewModel post)
@@ -679,6 +679,26 @@ public sealed class MainViewModel : ObservableObject
         AddLog("SYS", $"Queue {post.Header}: release lock");
     }
 
+    /// <summary>
+    /// Log full transaction details for diagnostics: all nozzle prices, selected nozzle, preset, payload.
+    /// </summary>
+    private void LogTransactionDetails(string method, PostViewModel post, NozzleViewModel selectedNozzle, string presetKind, string presetText, int presetRaw, string payload)
+    {
+        AddLog("TXN", $"--- {method} ---");
+        AddLog("TXN", $"  Post: {post.Header}");
+        AddLog("TXN", $"  Selected nozzle: #{selectedNozzle.Number} ({selectedNozzle.ProductName})");
+        AddLog("TXN", $"  Preset: {presetKind} text=\"{presetText}\" raw={presetRaw}");
+
+        foreach (NozzleViewModel n in post.Nozzles)
+        {
+            string marker = n.Number == selectedNozzle.Number ? " <<<" : "";
+            AddLog("TXN", $"  Nozzle {n.Number}: PriceText=\"{n.PriceText}\" ConfiguredPriceRaw={n.ConfiguredPriceRaw}{marker}");
+        }
+
+        AddLog("TXN", $"  A11 payload: {payload}");
+        AddLog("TXN", $"  Payload length: {payload.Length} chars");
+    }
+
     private void UpdateLiftedInfo()
     {
         PostViewModel? lifted = Posts.FirstOrDefault(p => p.HasLiftedNozzle);
@@ -704,7 +724,8 @@ public sealed class MainViewModel : ObservableObject
         Raise(nameof(DashboardAmountText));
         Raise(nameof(DashboardVolumeText));
         Raise(nameof(DashboardPriceText));
-        Raise(nameof(DashboardNozzles));
+        // DashboardNozzles is NOT bound in UI — nozzles bind directly from PostViewModel.
+        // Raising it here every 250ms was creating new ObservableCollection instances for nothing.
         Raise(nameof(DashboardActiveNozzleText));
         Raise(nameof(DashboardLastPayload));
         Raise(nameof(DashboardLastUpdateText));

@@ -71,8 +71,8 @@ public static class TatsunoCodec
         TatsunoUnitPriceFlag unitPriceFlag,
         int unitPriceRaw)
     {
-        string value = Math.Max(0, presetValueRaw).ToString("D6");
-        string price = Math.Max(0, unitPriceRaw).ToString("D4");
+        string value = Math.Clamp(presetValueRaw, 0, 999999).ToString("D6");
+        string price = Math.Clamp(unitPriceRaw, 0, 9999).ToString("D4");
         return $"@A10{(int)term}{(int)presetKind}{value}{(int)unitPriceFlag}{price}";
     }
 
@@ -91,14 +91,16 @@ public static class TatsunoCodec
         builder.Append("@A11");
         builder.Append((int)term);
         builder.Append((int)presetKind);
-        builder.Append(Math.Max(0, presetValueRaw).ToString("D6"));
+        // Clamp to 6-digit max (999999) to prevent field overflow in the protocol frame
+        builder.Append(Math.Clamp(presetValueRaw, 0, 999999).ToString("D6"));
 
         for (int i = 0; i < 6; i++)
         {
             if (i < products.Count)
             {
                 builder.Append((int)products[i].Flag);
-                builder.Append(Math.Max(0, products[i].UnitPriceRaw).ToString("D4"));
+                // Clamp to 4-digit max (9999) to prevent field overflow
+                builder.Append(Math.Clamp(products[i].UnitPriceRaw, 0, 9999).ToString("D4"));
             }
             else
             {
