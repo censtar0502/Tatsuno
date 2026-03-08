@@ -528,16 +528,27 @@ public sealed class MainViewModel : ObservableObject
         NozzleViewModel? nozzle = post?.SelectedNozzle;
         if (post is null || nozzle is null) return;
 
+        // Reference program ALWAYS uses Volume kind, converting amount to volume:
+        // volumeRaw = (amountRaw * 100) / priceRaw
         int amountRaw = TatsunoValueFormatter.ParseDisplayedMoneyToRaw(PresetDisplayText);
+        int priceRaw = nozzle.ConfiguredPriceRaw;
+        if (priceRaw <= 0)
+        {
+            AddLog("SYS", $"ERROR: Price is zero for nozzle {nozzle.Number}, cannot calculate volume");
+            return;
+        }
+        int volumeRaw = (amountRaw * 100) / priceRaw;
+
         var products = BuildSelectedNozzlePrice(post, nozzle);
         string payload = TatsunoCodec.BuildAuthorizeMultiPricePayload(
             TatsunoAuthorizationTerm.VolumeLimited,
-            TatsunoPresetKind.Amount,
-            amountRaw,
+            TatsunoPresetKind.Volume,
+            volumeRaw,
             products);
 
-        LogTransactionDetails("StartAmountPreset(Dashboard)", post, nozzle, "Amount", PresetDisplayText, amountRaw, payload);
-        post.Engine.Enqueue(payload, TatsunoCommandKind.AuthorizeMultiPrice, $"authorize amount nozzle {nozzle.Number} amount={PresetDisplayText} raw={amountRaw}");
+        AddLog("TXN", $"Amount→Volume conversion: amount={PresetDisplayText} amountRaw={amountRaw} priceRaw={priceRaw} → volumeRaw={volumeRaw} ({volumeRaw / 100.0:F2}L)");
+        LogTransactionDetails("StartAmountPreset(Dashboard)", post, nozzle, "Volume(from Amount)", PresetDisplayText, volumeRaw, payload);
+        post.Engine.Enqueue(payload, TatsunoCommandKind.AuthorizeMultiPrice, $"authorize amount→volume nozzle {nozzle.Number} amount={PresetDisplayText} volume={volumeRaw}");
     }
 
     private void StartVolumePreset()
@@ -620,16 +631,27 @@ public sealed class MainViewModel : ObservableObject
         NozzleViewModel? nozzle = post.SelectedNozzle;
         if (nozzle is null) return;
 
+        // Reference program ALWAYS uses Volume kind, converting amount to volume:
+        // volumeRaw = (amountRaw * 100) / priceRaw
         int amountRaw = TatsunoValueFormatter.ParseDisplayedMoneyToRaw(post.PresetDisplayText);
+        int priceRaw = nozzle.ConfiguredPriceRaw;
+        if (priceRaw <= 0)
+        {
+            AddLog("SYS", $"ERROR: Price is zero for nozzle {nozzle.Number}, cannot calculate volume");
+            return;
+        }
+        int volumeRaw = (amountRaw * 100) / priceRaw;
+
         var products = BuildSelectedNozzlePrice(post, nozzle);
         string payload = TatsunoCodec.BuildAuthorizeMultiPricePayload(
             TatsunoAuthorizationTerm.VolumeLimited,
-            TatsunoPresetKind.Amount,
-            amountRaw,
+            TatsunoPresetKind.Volume,
+            volumeRaw,
             products);
 
-        LogTransactionDetails("HandlePostStartAmount(Post)", post, nozzle, "Amount", post.PresetDisplayText, amountRaw, payload);
-        post.Engine.Enqueue(payload, TatsunoCommandKind.AuthorizeMultiPrice, $"authorize amount nozzle {nozzle.Number} amount={post.PresetDisplayText} raw={amountRaw}");
+        AddLog("TXN", $"Amount→Volume conversion: amount={post.PresetDisplayText} amountRaw={amountRaw} priceRaw={priceRaw} → volumeRaw={volumeRaw} ({volumeRaw / 100.0:F2}L)");
+        LogTransactionDetails("HandlePostStartAmount(Post)", post, nozzle, "Volume(from Amount)", post.PresetDisplayText, volumeRaw, payload);
+        post.Engine.Enqueue(payload, TatsunoCommandKind.AuthorizeMultiPrice, $"authorize amount→volume nozzle {nozzle.Number} amount={post.PresetDisplayText} volume={volumeRaw}");
     }
 
     private void HandlePostStartVolume(PostViewModel post)

@@ -55,8 +55,8 @@ public enum TatsunoAuthorizationTerm
 
 public enum TatsunoPresetKind
 {
-    Amount = 0,
-    Volume = 1
+    Volume = 1,
+    Amount = 2
 }
 
 public enum TatsunoLinkState
