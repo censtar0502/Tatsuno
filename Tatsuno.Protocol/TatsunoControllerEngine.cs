@@ -125,6 +125,11 @@ public sealed class TatsunoControllerEngine
     {
         if (LinkState == TatsunoLinkState.WaitingPollResponse && control == TatsunoControlBytes.EOT)
         {
+            // EOT response to poll = ТРК connected, all nozzles stored, pump idle
+            // Reference program uses this to show "ГОТОВ" (ready) status
+            Snapshot.Condition = TatsunoPumpCondition.NozzleStored;
+            Snapshot.LastUpdatedLocal = DateTime.Now;
+
             LinkState = TatsunoLinkState.Idle;
             _lastStateChangeUtc = utcNow;
         }

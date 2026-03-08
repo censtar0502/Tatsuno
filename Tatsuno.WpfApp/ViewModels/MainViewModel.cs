@@ -323,13 +323,13 @@ public sealed class MainViewModel : ObservableObject
             _watchdog.Start();
             AddLog("SYS", $"Connected {SelectedPort}");
 
-            // Request initial status and totals from ТРК immediately
+            // Request initial totals from ТРК (reference program does A20 only, no A15)
+            // Status "ГОТОВ" is determined from EOT responses to polling
             PostViewModel? trk = Posts.FirstOrDefault();
             if (trk is not null)
             {
-                trk.Engine.Enqueue(TatsunoCodec.BuildRequestStatusPayload(), TatsunoCommandKind.RequestStatus, "initial status", allowedWhenUncontrollable: true);
                 trk.Engine.Enqueue(TatsunoCodec.BuildRequestTotalsPayload(), TatsunoCommandKind.RequestTotals, "initial totals", allowedWhenUncontrollable: true);
-                AddLog("SYS", "Queued initial A15 (status) + A20 (totals)");
+                AddLog("SYS", "Queued initial A20 (totals)");
             }
 
             StartPolling();
@@ -463,6 +463,9 @@ public sealed class MainViewModel : ObservableObject
                         owner.Engine.HandleControlByte(item.Control, DateTime.UtcNow);
                         if (item.Control == TatsunoControlBytes.EOT)
                         {
+                            // EOT = ТРК idle, update UI to show "ГОТОВ"
+                            owner.ApplySnapshot();
+                            UpdateDashboardPost();
                             AddLog("RX", $"{owner.Header} <EOT>");
                         }
                         break;
@@ -525,16 +528,27 @@ public sealed class MainViewModel : ObservableObject
         NozzleViewModel? nozzle = post?.SelectedNozzle;
         if (post is null || nozzle is null) return;
 
-        int amountRaw = TatsunoValueFormatter.ParseDisplayedMoneyToRaw(PresetDisplayText);
-        var products = BuildAllProductPrices(post);
+        // Reference program converts amount to volume: volume = amount / price
+        // Always sends as VolumeLimited + Volume presetKind
+        int amountDisplayed = TatsunoValueFormatter.ParseDisplayedMoneyToRaw(PresetDisplayText) * 10; // to real sum
+        int priceDisplayed = nozzle.ConfiguredPriceRaw * 10; // to real price per liter
+        if (priceDisplayed <= 0)
+        {
+            AddLog("SYS", $"ERROR: price is 0 for nozzle {nozzle.Number}, cannot calculate volume");
+            return;
+        }
+
+        // volume (L) = amount / price, then to raw: volumeRaw = volume * 100
+        int volumeRaw = (int)(((long)amountDisplayed * 100) / priceDisplayed);
+        var products = BuildSelectedNozzlePrice(post, nozzle);
         string payload = TatsunoCodec.BuildAuthorizeMultiPricePayload(
-            TatsunoAuthorizationTerm.PresetChangeForbidden,
-            TatsunoPresetKind.Amount,
-            amountRaw,
+            TatsunoAuthorizationTerm.VolumeLimited,
+            TatsunoPresetKind.Volume,
+            volumeRaw,
             products);
 
-        post.Engine.Enqueue(payload, TatsunoCommandKind.AuthorizeMultiPrice, $"authorize amount nozzle {nozzle.Number} amount={PresetDisplayText}");
-        AddLog("SYS", $"Queue {post.Header}: amount preset {PresetDisplayText} nozzle {nozzle.Number}");
+        post.Engine.Enqueue(payload, TatsunoCommandKind.AuthorizeMultiPrice, $"authorize amount→volume nozzle {nozzle.Number} amount={PresetDisplayText} → {volumeRaw} raw vol");
+        AddLog("SYS", $"Queue {post.Header}: amount {PresetDisplayText} → volume {volumeRaw / 100.0:F2}L nozzle {nozzle.Number}");
     }
 
     private void StartVolumePreset()
@@ -544,7 +558,7 @@ public sealed class MainViewModel : ObservableObject
         if (post is null || nozzle is null) return;
 
         int volumeRaw = TatsunoValueFormatter.ParseDisplayedVolumeToRaw(PresetDisplayText);
-        var products = BuildAllProductPrices(post);
+        var products = BuildSelectedNozzlePrice(post, nozzle);
         string payload = TatsunoCodec.BuildAuthorizeMultiPricePayload(
             TatsunoAuthorizationTerm.VolumeLimited,
             TatsunoPresetKind.Volume,
@@ -590,14 +604,24 @@ public sealed class MainViewModel : ObservableObject
         AddLog("SYS", $"Queue {DashboardPost.Header}: release lock");
     }
 
-    /// <summary>Build product price list from all nozzles for A11 multi-price command.</summary>
-    private static List<(TatsunoUnitPriceFlag Flag, int UnitPriceRaw)> BuildAllProductPrices(PostViewModel post)
+    /// <summary>
+    /// Build product price list for A11 multi-price command.
+    /// Reference program sends price ONLY for the selected nozzle's position, all others = 0.
+    /// </summary>
+    private static List<(TatsunoUnitPriceFlag Flag, int UnitPriceRaw)> BuildSelectedNozzlePrice(PostViewModel post, NozzleViewModel selectedNozzle)
     {
         var products = new List<(TatsunoUnitPriceFlag Flag, int UnitPriceRaw)>();
         foreach (NozzleViewModel n in post.Nozzles)
         {
-            int raw = n.ConfiguredPriceRaw;
-            products.Add(raw > 0 ? (TatsunoUnitPriceFlag.Credit, raw) : (TatsunoUnitPriceFlag.Unknown, 0));
+            if (n.Number == selectedNozzle.Number)
+            {
+                int raw = n.ConfiguredPriceRaw;
+                products.Add(raw > 0 ? (TatsunoUnitPriceFlag.Credit, raw) : (TatsunoUnitPriceFlag.Unknown, 0));
+            }
+            else
+            {
+                products.Add((TatsunoUnitPriceFlag.Unknown, 0));
+            }
         }
         return products;
     }
@@ -607,17 +631,25 @@ public sealed class MainViewModel : ObservableObject
         NozzleViewModel? nozzle = post.SelectedNozzle;
         if (nozzle is null) return;
 
-        int amountRaw = TatsunoValueFormatter.ParseDisplayedMoneyToRaw(post.PresetDisplayText);
-        // A11 multi-price: send ALL product prices so ТРК picks correct one
-        var products = BuildAllProductPrices(post);
+        // Reference program converts amount to volume: volume = amount / price
+        int amountDisplayed = TatsunoValueFormatter.ParseDisplayedMoneyToRaw(post.PresetDisplayText) * 10;
+        int priceDisplayed = nozzle.ConfiguredPriceRaw * 10;
+        if (priceDisplayed <= 0)
+        {
+            AddLog("SYS", $"ERROR: price is 0 for nozzle {nozzle.Number}, cannot calculate volume");
+            return;
+        }
+
+        int volumeRaw = (int)(((long)amountDisplayed * 100) / priceDisplayed);
+        var products = BuildSelectedNozzlePrice(post, nozzle);
         string payload = TatsunoCodec.BuildAuthorizeMultiPricePayload(
-            TatsunoAuthorizationTerm.PresetChangeForbidden,
-            TatsunoPresetKind.Amount,
-            amountRaw,
+            TatsunoAuthorizationTerm.VolumeLimited,
+            TatsunoPresetKind.Volume,
+            volumeRaw,
             products);
 
-        post.Engine.Enqueue(payload, TatsunoCommandKind.AuthorizeMultiPrice, $"authorize amount nozzle {nozzle.Number} amount={post.PresetDisplayText}");
-        AddLog("SYS", $"Queue {post.Header}: amount preset {post.PresetDisplayText} nozzle {nozzle.Number}");
+        post.Engine.Enqueue(payload, TatsunoCommandKind.AuthorizeMultiPrice, $"authorize amount→volume nozzle {nozzle.Number} amount={post.PresetDisplayText} → {volumeRaw} raw vol");
+        AddLog("SYS", $"Queue {post.Header}: amount {post.PresetDisplayText} → volume {volumeRaw / 100.0:F2}L nozzle {nozzle.Number}");
     }
 
     private void HandlePostStartVolume(PostViewModel post)
@@ -626,8 +658,7 @@ public sealed class MainViewModel : ObservableObject
         if (nozzle is null) return;
 
         int volumeRaw = TatsunoValueFormatter.ParseDisplayedVolumeToRaw(post.PresetDisplayText);
-        // A11 multi-price: send ALL product prices so ТРК picks correct one
-        var products = BuildAllProductPrices(post);
+        var products = BuildSelectedNozzlePrice(post, nozzle);
         string payload = TatsunoCodec.BuildAuthorizeMultiPricePayload(
             TatsunoAuthorizationTerm.VolumeLimited,
             TatsunoPresetKind.Volume,
