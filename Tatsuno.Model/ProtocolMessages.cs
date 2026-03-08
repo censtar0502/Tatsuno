@@ -33,3 +33,11 @@ public sealed record TatsunoTotalsEntry(
 public sealed record TatsunoTotalsMessage(
     IReadOnlyList<TatsunoTotalsEntry> Entries,
     string RawPayload) : TatsunoParsedMessage(RawPayload);
+
+/// <summary>
+/// Q00 — Power-ON CRC handshake message from ТРК.
+/// Contains CRC-16 (CCITT) data that the console must acknowledge with A00.
+/// </summary>
+public sealed record TatsunoPowerOnMessage(
+    string CrcHexData,
+    string RawPayload) : TatsunoParsedMessage(RawPayload);

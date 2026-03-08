@@ -56,7 +56,8 @@ public sealed class TatsunoControllerEngine
     public byte StationAddress { get; }
     public char StationAddressChar => (char)StationAddress;
     public TatsunoLinkState LinkState { get; private set; } = TatsunoLinkState.Idle;
-    public TimeSpan PollInterval { get; set; } = TimeSpan.FromMilliseconds(250);
+    // Reference program uses ~530ms poll interval (measured from log)
+    public TimeSpan PollInterval { get; set; } = TimeSpan.FromMilliseconds(500);
     public TimeSpan ReplyTimeout { get; set; } = TimeSpan.FromMilliseconds(700);
     public int PendingCount => _queue.Count + (_current is null ? 0 : 1);
 
@@ -195,11 +196,19 @@ public sealed class TatsunoControllerEngine
 
         switch (message)
         {
+            case TatsunoPowerOnMessage powerOnMessage:
+                // Q00 — Power-ON CRC handshake. Auto-queue A00 response.
+                // Per reference log: Q00 with "43AF" → A00 with CRC acknowledgment.
+                string ackPayload = TatsunoCodec.BuildCrcAcknowledgmentPayload(powerOnMessage.CrcHexData);
+                Enqueue(ackPayload, TatsunoCommandKind.CrcAcknowledgment, $"CRC ack (Q00 data={powerOnMessage.CrcHexData})", allowedWhenUncontrollable: true);
+                break;
+
             case TatsunoPumpConditionMessage conditionMessage:
                 Snapshot.Controllability = conditionMessage.Controllability;
                 break;
 
             case TatsunoPumpStatusMessage statusMessage:
+                TatsunoPumpCondition prevCondition = Snapshot.Condition;
                 Snapshot.Condition = statusMessage.Condition;
                 Snapshot.CurrentVolumeRaw = statusMessage.VolumeRaw;
                 Snapshot.CurrentAmountRaw = statusMessage.AmountRaw;
@@ -216,6 +225,12 @@ public sealed class TatsunoControllerEngine
                     {
                         nozzle.ProductCode = statusMessage.ProductCode;
                     }
+                }
+
+                // Auto-request totals when fueling completes (reference program does this)
+                if (statusMessage.Condition == TatsunoPumpCondition.Finished && prevCondition != TatsunoPumpCondition.Finished)
+                {
+                    Enqueue(TatsunoCodec.BuildRequestTotalsPayload(), TatsunoCommandKind.RequestTotals, "auto totals (fueling finished)", allowedWhenUncontrollable: true);
                 }
                 break;
 

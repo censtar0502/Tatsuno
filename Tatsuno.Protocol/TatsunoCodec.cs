@@ -58,6 +58,33 @@ public static class TatsunoCodec
         return ComputeBcc(payloadAscii) == bcc;
     }
 
+    /// <summary>
+    /// Build A00 CRC acknowledgment payload for Q00 Power-ON handshake.
+    /// Per Section 7-2 of Tatsuno protocol specification:
+    /// 1. Parse received CRC hex data (4 chars = 2 bytes)
+    /// 2. Add upper byte + lower byte
+    /// 3. Convert result to 2-char uppercase hex
+    /// </summary>
+    public static string BuildCrcAcknowledgmentPayload(string crcHexData)
+    {
+        if (crcHexData.Length >= 4)
+        {
+            try
+            {
+                byte upper = Convert.ToByte(crcHexData.Substring(0, 2), 16);
+                byte lower = Convert.ToByte(crcHexData.Substring(2, 2), 16);
+                byte sum = (byte)(upper + lower);
+                return $"@A00{sum:X2}";
+            }
+            catch (FormatException)
+            {
+                // If hex parsing fails, return empty acknowledgment
+            }
+        }
+
+        return "@A0000";
+    }
+
     public static string BuildRequestStatusPayload() => "@A15";
     public static string BuildRequestTotalsPayload() => "@A20";
     public static string BuildCancelAuthorizationPayload() => "@A12";

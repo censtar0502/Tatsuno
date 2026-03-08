@@ -76,5 +76,6 @@ public enum TatsunoCommandKind
     LockPump = 4,
     ReleasePumpLock = 5,
     RequestStatus = 6,
-    RequestTotals = 7
+    RequestTotals = 7,
+    CrcAcknowledgment = 8
 }

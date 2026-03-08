@@ -25,6 +25,13 @@ public static class TatsunoQueryParser
         string code = payload.Substring(2, 2);
         switch (code)
         {
+            case "00":
+                // Q00 — Power-ON CRC handshake
+                // Format: @Q00XXYY where XXYY is the CRC-16 hex data (4 chars)
+                string crcData = payload.Length > 4 ? payload.Substring(4) : string.Empty;
+                message = new TatsunoPowerOnMessage(crcData, payload);
+                return true;
+
             case "60":
                 if (payload.Length < 6)
                 {

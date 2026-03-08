@@ -19,10 +19,12 @@ namespace Tatsuno.WpfApp.ViewModels;
 public sealed class MainViewModel : ObservableObject
 {
     private static readonly TimeSpan CommsTimeout = TimeSpan.FromSeconds(3);
+    private static readonly TimeSpan PeriodicTotalsInterval = TimeSpan.FromSeconds(15);
 
     private readonly object _sync = new();
     private readonly TatsunoStreamDecoder _decoder = new();
     private readonly DispatcherTimer _watchdog;
+    private readonly DispatcherTimer _periodicTotals;
     private SerialPortSession? _session;
     private CancellationTokenSource? _pollCts;
     private StreamWriter? _fileLog;
@@ -68,6 +70,10 @@ public sealed class MainViewModel : ObservableObject
 
         _watchdog = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(1500) };
         _watchdog.Tick += OnWatchdogTick;
+
+        // Reference program sends A20 (totals) every ~15 seconds during idle
+        _periodicTotals = new DispatcherTimer { Interval = PeriodicTotalsInterval };
+        _periodicTotals.Tick += OnPeriodicTotalsTick;
 
         RefreshPorts();
         ApplyPosts();
@@ -321,15 +327,19 @@ public sealed class MainViewModel : ObservableObject
             IsConnected = true;
             PollState = "Опрос активен";
             _watchdog.Start();
+            _periodicTotals.Start();
             AddLog("SYS", $"Connected {SelectedPort}");
 
-            // Request initial totals from ТРК (reference program does A20 only, no A15)
-            // Status "ГОТОВ" is determined from EOT responses to polling
+            // Startup sequence per reference program:
+            // 1. First poll → may get Q00 (handled automatically by engine → auto-queues A00)
+            // 2. A15 — request status (gets Q61 with current state)
+            // 3. A20 — request totals (gets Q65 with accumulated values)
             PostViewModel? trk = Posts.FirstOrDefault();
             if (trk is not null)
             {
+                trk.Engine.Enqueue(TatsunoCodec.BuildRequestStatusPayload(), TatsunoCommandKind.RequestStatus, "initial status", allowedWhenUncontrollable: true);
                 trk.Engine.Enqueue(TatsunoCodec.BuildRequestTotalsPayload(), TatsunoCommandKind.RequestTotals, "initial totals", allowedWhenUncontrollable: true);
-                AddLog("SYS", "Queued initial A20 (totals)");
+                AddLog("SYS", "Queued startup: A15 (status) + A20 (totals)");
             }
 
             StartPolling();
@@ -344,6 +354,7 @@ public sealed class MainViewModel : ObservableObject
     private void Disconnect()
     {
         _watchdog.Stop();
+        _periodicTotals.Stop();
         StopPolling();
         CloseFileLog();
 
@@ -764,6 +775,25 @@ public sealed class MainViewModel : ObservableObject
         }
 
         UpdateDashboardPost();
+    }
+
+    /// <summary>
+    /// Reference program sends A20 (totals request) every ~15 seconds during idle.
+    /// This keeps totals up-to-date and ensures ТРК data consistency.
+    /// </summary>
+    private void OnPeriodicTotalsTick(object? sender, EventArgs e)
+    {
+        if (!IsConnected) return;
+
+        foreach (PostViewModel post in Posts)
+        {
+            // Only request totals when engine is idle (no pending commands)
+            // to avoid interfering with active transactions
+            if (post.Engine.PendingCount == 0)
+            {
+                post.Engine.Enqueue(TatsunoCodec.BuildRequestTotalsPayload(), TatsunoCommandKind.RequestTotals, "periodic totals", allowedWhenUncontrollable: true);
+            }
+        }
     }
 
     private void AddLog(string direction, string text)
