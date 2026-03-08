@@ -16,6 +16,8 @@
     </Window.DataContext>
 
     <Window.Resources>
+        <BooleanToVisibilityConverter x:Key="BoolToVis"/>
+
         <Style x:Key="RoundedBtn" TargetType="Button">
             <Setter Property="FontSize" Value="12"/>
             <Setter Property="Cursor" Value="Hand"/>
@@ -54,6 +56,9 @@
                         <ControlTemplate.Triggers>
                             <Trigger Property="IsMouseOver" Value="True">
                                 <Setter TargetName="Bd" Property="Opacity" Value="0.85"/>
+                            </Trigger>
+                            <Trigger Property="IsEnabled" Value="False">
+                                <Setter TargetName="Bd" Property="Opacity" Value="0.35"/>
                             </Trigger>
                         </ControlTemplate.Triggers>
                     </ControlTemplate>
@@ -157,35 +162,47 @@
                                     </DockPanel>
                                 </Border>
 
-                                <!-- Nozzles -->
-                                <ItemsControl Grid.Row="1" ItemsSource="{Binding Nozzles}" Margin="0,0,0,6">
-                                    <ItemsControl.ItemTemplate>
-                                        <DataTemplate>
-                                            <Grid Margin="0,0,0,3" Height="32">
-                                                <Grid.ColumnDefinitions>
-                                                    <ColumnDefinition Width="80"/>
-                                                    <ColumnDefinition Width="*"/>
-                                                    <ColumnDefinition Width="80"/>
-                                                </Grid.ColumnDefinitions>
-                                                <Button Grid.Column="0" Command="{Binding SelectCommand}"
-                                                        Background="{Binding ProductBrush}" Foreground="White" FontSize="11"
-                                                        Content="{Binding ProductName}" Style="{StaticResource NozzleBtn}"/>
-                                                <TextBox Grid.Column="1" Margin="4,0" FontSize="13" FontFamily="Consolas"
-                                                         VerticalContentAlignment="Center" HorizontalContentAlignment="Center"
-                                                         Text="{Binding PriceText, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"/>
-                                                <StackPanel Grid.Column="2" VerticalAlignment="Center">
-                                                    <TextBlock Text="{Binding TotalsVolumeText}" FontSize="10" FontFamily="Consolas" HorizontalAlignment="Right" Foreground="#9CA3AF"/>
-                                                    <TextBlock Text="{Binding TotalsAmountText}" FontSize="10" FontFamily="Consolas" HorizontalAlignment="Right" Foreground="#9CA3AF"/>
-                                                </StackPanel>
-                                            </Grid>
-                                        </DataTemplate>
-                                    </ItemsControl.ItemTemplate>
-                                </ItemsControl>
+                                <!-- Nozzles + Save Button -->
+                                <Grid Grid.Row="1" Margin="0,0,0,6">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="*"/>
+                                        <ColumnDefinition Width="Auto"/>
+                                    </Grid.ColumnDefinitions>
+
+                                    <ItemsControl Grid.Column="0" ItemsSource="{Binding Nozzles}">
+                                        <ItemsControl.ItemTemplate>
+                                            <DataTemplate>
+                                                <Grid Margin="0,0,0,3" Height="32">
+                                                    <Grid.ColumnDefinitions>
+                                                        <ColumnDefinition Width="80"/>
+                                                        <ColumnDefinition Width="*"/>
+                                                        <ColumnDefinition Width="80"/>
+                                                    </Grid.ColumnDefinitions>
+                                                    <Button Grid.Column="0" Command="{Binding SelectCommand}"
+                                                            Background="{Binding ProductBrush}" Foreground="White" FontSize="11"
+                                                            Content="{Binding ProductName}" Style="{StaticResource NozzleBtn}"/>
+                                                    <TextBox Grid.Column="1" Margin="4,0" FontSize="13" FontFamily="Consolas"
+                                                             VerticalContentAlignment="Center" HorizontalContentAlignment="Center"
+                                                             Text="{Binding PriceText, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"/>
+                                                    <StackPanel Grid.Column="2" VerticalAlignment="Center">
+                                                        <TextBlock Text="{Binding TotalsVolumeText}" FontSize="10" FontFamily="Consolas" HorizontalAlignment="Right" Foreground="#9CA3AF"/>
+                                                        <TextBlock Text="{Binding TotalsAmountText}" FontSize="10" FontFamily="Consolas" HorizontalAlignment="Right" Foreground="#9CA3AF"/>
+                                                    </StackPanel>
+                                                </Grid>
+                                            </DataTemplate>
+                                        </ItemsControl.ItemTemplate>
+                                    </ItemsControl>
+
+                                    <Button Grid.Column="1" Margin="6,0,0,0" Padding="10,4" VerticalAlignment="Top"
+                                            Content="Сохранить" Command="{Binding SavePricesCommand}"
+                                            Style="{StaticResource RoundedBtn}" Background="#F3F4F6" FontSize="11"/>
+                                </Grid>
 
                                 <!-- Live Display -->
                                 <Border Grid.Row="2" Background="#F0FDF4" CornerRadius="6" Padding="10,6" Margin="0,0,0,6" BorderBrush="#D1FAE5" BorderThickness="1">
                                     <Grid>
                                         <Grid.RowDefinitions>
+                                            <RowDefinition Height="Auto"/>
                                             <RowDefinition Height="Auto"/>
                                             <RowDefinition Height="Auto"/>
                                             <RowDefinition Height="Auto"/>
@@ -195,14 +212,20 @@
                                             <ColumnDefinition Width="*"/>
                                         </Grid.ColumnDefinitions>
 
-                                        <TextBlock Grid.Row="0" Grid.Column="0" Text="Сумма" Foreground="#059669" FontSize="11" VerticalAlignment="Center"/>
-                                        <TextBlock Grid.Row="0" Grid.Column="1" Text="{Binding LiveAmountText}" FontSize="30" FontFamily="Consolas" FontWeight="Bold" HorizontalAlignment="Right" Foreground="#1F2937"/>
+                                        <!-- Active nozzle + product header -->
+                                        <TextBlock Grid.Row="0" Grid.ColumnSpan="2"
+                                                   Text="{Binding ActiveNozzleProductText}"
+                                                   FontSize="14" FontWeight="SemiBold" Foreground="#059669"
+                                                   HorizontalAlignment="Center" Margin="0,0,0,4"/>
 
-                                        <TextBlock Grid.Row="1" Grid.Column="0" Text="Объём" Foreground="#059669" FontSize="11" VerticalAlignment="Center"/>
-                                        <TextBlock Grid.Row="1" Grid.Column="1" Text="{Binding LiveVolumeText}" FontSize="26" FontFamily="Consolas" FontWeight="Bold" HorizontalAlignment="Right" Foreground="#1F2937"/>
+                                        <TextBlock Grid.Row="1" Grid.Column="0" Text="Сумма" Foreground="#059669" FontSize="11" VerticalAlignment="Center"/>
+                                        <TextBlock Grid.Row="1" Grid.Column="1" Text="{Binding LiveAmountText}" FontSize="30" FontFamily="Consolas" FontWeight="Bold" HorizontalAlignment="Right" Foreground="#1F2937"/>
 
-                                        <TextBlock Grid.Row="2" Grid.Column="0" Text="Цена" Foreground="#059669" FontSize="11" VerticalAlignment="Center"/>
-                                        <TextBlock Grid.Row="2" Grid.Column="1" Text="{Binding LivePriceText}" FontSize="20" FontFamily="Consolas" HorizontalAlignment="Right" Foreground="#4B5563"/>
+                                        <TextBlock Grid.Row="2" Grid.Column="0" Text="Объём" Foreground="#059669" FontSize="11" VerticalAlignment="Center"/>
+                                        <TextBlock Grid.Row="2" Grid.Column="1" Text="{Binding LiveVolumeText}" FontSize="26" FontFamily="Consolas" FontWeight="Bold" HorizontalAlignment="Right" Foreground="#1F2937"/>
+
+                                        <TextBlock Grid.Row="3" Grid.Column="0" Text="Цена" Foreground="#059669" FontSize="11" VerticalAlignment="Center"/>
+                                        <TextBlock Grid.Row="3" Grid.Column="1" Text="{Binding LivePriceText}" FontSize="20" FontFamily="Consolas" HorizontalAlignment="Right" Foreground="#4B5563"/>
                                     </Grid>
                                 </Border>
 
@@ -217,28 +240,51 @@
                                     </StackPanel>
                                 </Border>
 
-                                <!-- Preset -->
+                                <!-- Dual Preset Fields: Литры + Сумма -->
                                 <Grid Grid.Row="4" Margin="0,0,0,4">
                                     <Grid.ColumnDefinitions>
                                         <ColumnDefinition Width="*"/>
-                                        <ColumnDefinition Width="Auto"/>
-                                        <ColumnDefinition Width="Auto"/>
+                                        <ColumnDefinition Width="8"/>
+                                        <ColumnDefinition Width="*"/>
                                     </Grid.ColumnDefinitions>
-                                    <TextBox Height="34" FontSize="18" FontFamily="Consolas"
-                                             VerticalContentAlignment="Center" HorizontalContentAlignment="Center"
-                                             Text="{Binding PresetDisplayText, UpdateSourceTrigger=PropertyChanged}"/>
-                                    <Button Grid.Column="1" Margin="4,0,0,0" Padding="12,0" Height="34" Content="СТАРТ (сумма)"
-                                            Command="{Binding PostStartAmountCommand}" Style="{StaticResource RoundedBtn}"
-                                            Background="#16A34A" Foreground="White" FontWeight="Bold" FontSize="13"/>
-                                    <Button Grid.Column="2" Margin="4,0,0,0" Padding="12,0" Height="34" Content="СТАРТ (объём)"
-                                            Command="{Binding PostStartVolumeCommand}" Style="{StaticResource RoundedBtn}"
-                                            Background="#2563EB" Foreground="White" FontWeight="Bold" FontSize="13"/>
+
+                                    <!-- Volume field -->
+                                    <Border Grid.Column="0" BorderBrush="#D1D5DB" BorderThickness="1" CornerRadius="4" Padding="6,2">
+                                        <StackPanel>
+                                            <TextBlock Text="Литры" FontSize="10" Foreground="#6B7280" Margin="0,0,0,2"/>
+                                            <TextBox FontSize="18" FontFamily="Consolas" BorderThickness="0"
+                                                     VerticalContentAlignment="Center" HorizontalContentAlignment="Center"
+                                                     Text="{Binding PresetVolumeText, UpdateSourceTrigger=PropertyChanged}"/>
+                                        </StackPanel>
+                                    </Border>
+
+                                    <!-- Amount field -->
+                                    <Border Grid.Column="2" BorderBrush="#D1D5DB" BorderThickness="1" CornerRadius="4" Padding="6,2">
+                                        <StackPanel>
+                                            <TextBlock Text="Сумма" FontSize="10" Foreground="#6B7280" Margin="0,0,0,2"/>
+                                            <TextBox FontSize="18" FontFamily="Consolas" BorderThickness="0"
+                                                     VerticalContentAlignment="Center" HorizontalContentAlignment="Center"
+                                                     Text="{Binding PresetAmountText, UpdateSourceTrigger=PropertyChanged}"/>
+                                        </StackPanel>
+                                    </Border>
                                 </Grid>
 
-                                <!-- СТОП -->
-                                <Button Grid.Row="5" Height="38" Margin="0,0,0,6" Content="СТОП"
-                                        Command="{Binding PostCancelCommand}" Style="{StaticResource RoundedBtn}"
-                                        Background="#DC2626" Foreground="White" FontWeight="Bold" FontSize="16"/>
+                                <!-- СТАРТ + СТОП -->
+                                <Grid Grid.Row="5" Margin="0,0,0,6">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="*"/>
+                                        <ColumnDefinition Width="8"/>
+                                        <ColumnDefinition Width="*"/>
+                                    </Grid.ColumnDefinitions>
+
+                                    <Button Grid.Column="0" Height="38" Content="СТАРТ"
+                                            Command="{Binding PostStartCommand}" Style="{StaticResource RoundedBtn}"
+                                            Background="#16A34A" Foreground="White" FontWeight="Bold" FontSize="16"/>
+
+                                    <Button Grid.Column="2" Height="38" Content="СТОП"
+                                            Command="{Binding PostCancelCommand}" Style="{StaticResource RoundedBtn}"
+                                            Background="#DC2626" Foreground="White" FontWeight="Bold" FontSize="16"/>
+                                </Grid>
 
                                 <!-- Service Buttons -->
                                 <WrapPanel Grid.Row="6" Margin="0,0,0,4">

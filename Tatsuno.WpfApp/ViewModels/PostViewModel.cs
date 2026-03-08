@@ -19,7 +19,11 @@ public sealed class PostViewModel : ObservableObject
     private string _activeNozzleText = "—";
     private string _lastPayload = string.Empty;
     private string _lastUpdateText = "—";
-    private string _presetDisplayText = "12500";
+    private string _presetVolumeText = "";
+    private string _presetAmountText = "";
+    private bool _isUpdatingPreset;
+    private bool _lastEditWasVolume = true;
+    private bool _isBusy;
     private bool _commsLost;
     private DateTime _lastCommsUtc = DateTime.MinValue;
 
@@ -45,23 +49,23 @@ public sealed class PostViewModel : ObservableObject
         }
 
         SelectCommand = new RelayCommand(() => Selected?.Invoke(this));
-        PostStartAmountCommand = new RelayCommand(() => StartAmountRequested?.Invoke(this));
-        PostStartVolumeCommand = new RelayCommand(() => StartVolumeRequested?.Invoke(this));
+        PostStartCommand = new RelayCommand(() => StartRequested?.Invoke(this), () => !IsBusy);
         PostCancelCommand = new RelayCommand(() => CancelRequested?.Invoke(this));
         PostStatusCommand = new RelayCommand(() => StatusRequested?.Invoke(this));
         PostTotalsCommand = new RelayCommand(() => TotalsRequested?.Invoke(this));
         PostLockCommand = new RelayCommand(() => LockRequested?.Invoke(this));
         PostReleaseCommand = new RelayCommand(() => ReleaseRequested?.Invoke(this));
+        SavePricesCommand = new RelayCommand(() => SavePricesRequested?.Invoke(this));
     }
 
     public event Action<PostViewModel>? Selected;
-    public event Action<PostViewModel>? StartAmountRequested;
-    public event Action<PostViewModel>? StartVolumeRequested;
+    public event Action<PostViewModel>? StartRequested;
     public event Action<PostViewModel>? CancelRequested;
     public event Action<PostViewModel>? StatusRequested;
     public event Action<PostViewModel>? TotalsRequested;
     public event Action<PostViewModel>? LockRequested;
     public event Action<PostViewModel>? ReleaseRequested;
+    public event Action<PostViewModel>? SavePricesRequested;
 
     public TatsunoControllerEngine Engine { get; }
     public int PostIndex { get; }
@@ -69,15 +73,18 @@ public sealed class PostViewModel : ObservableObject
     public ObservableCollection<NozzleViewModel> Nozzles { get; }
 
     public RelayCommand SelectCommand { get; }
-    public RelayCommand PostStartAmountCommand { get; }
-    public RelayCommand PostStartVolumeCommand { get; }
+    public RelayCommand PostStartCommand { get; }
     public RelayCommand PostCancelCommand { get; }
     public RelayCommand PostStatusCommand { get; }
     public RelayCommand PostTotalsCommand { get; }
     public RelayCommand PostLockCommand { get; }
     public RelayCommand PostReleaseCommand { get; }
+    public RelayCommand SavePricesCommand { get; }
 
     public string Header => $"ТРК Сторона А (Адрес {AddressLabel})";
+
+    /// <summary>True when last user edit was in the volume field; false if amount field.</summary>
+    public bool LastEditWasVolume => _lastEditWasVolume;
 
     public bool IsSelected
     {
@@ -119,10 +126,77 @@ public sealed class PostViewModel : ObservableObject
             _ => new SolidColorBrush(Color.FromRgb(156, 163, 175))
         };
 
-    public string PresetDisplayText
+    /// <summary>Preset volume field (liters, e.g. "5,00"). Auto-calculates amount.</summary>
+    public string PresetVolumeText
     {
-        get => _presetDisplayText;
-        set => SetProperty(ref _presetDisplayText, value);
+        get => _presetVolumeText;
+        set
+        {
+            if (!SetProperty(ref _presetVolumeText, value)) return;
+            _lastEditWasVolume = true;
+            if (_isUpdatingPreset) return;
+            _isUpdatingPreset = true;
+            try
+            {
+                NozzleViewModel? nozzle = SelectedNozzle;
+                int priceRaw = nozzle?.ConfiguredPriceRaw ?? 0;
+                if (priceRaw > 0)
+                {
+                    int volumeRaw = TatsunoValueFormatter.ParseDisplayedVolumeToRaw(value);
+                    // amount_displayed = volumeRaw * priceRaw / 100 * 10
+                    // volumeRaw is in centilitres (100 = 1L), priceRaw is display/10
+                    // amountRaw = volumeRaw * priceRaw / 100
+                    int amountRaw = volumeRaw * priceRaw / 100;
+                    PresetAmountText = TatsunoValueFormatter.FormatMoney(amountRaw);
+                }
+            }
+            finally
+            {
+                _isUpdatingPreset = false;
+            }
+        }
+    }
+
+    /// <summary>Preset amount field (sum, e.g. "42 500"). Auto-calculates volume.</summary>
+    public string PresetAmountText
+    {
+        get => _presetAmountText;
+        set
+        {
+            if (!SetProperty(ref _presetAmountText, value)) return;
+            if (!_isUpdatingPreset) _lastEditWasVolume = false;
+            if (_isUpdatingPreset) return;
+            _isUpdatingPreset = true;
+            try
+            {
+                NozzleViewModel? nozzle = SelectedNozzle;
+                int priceRaw = nozzle?.ConfiguredPriceRaw ?? 0;
+                if (priceRaw > 0)
+                {
+                    int amountRaw = TatsunoValueFormatter.ParseDisplayedMoneyToRaw(value);
+                    // volumeRaw = amountRaw * 100 / priceRaw
+                    int volumeRaw = amountRaw * 100 / priceRaw;
+                    PresetVolumeText = TatsunoValueFormatter.FormatVolume(volumeRaw);
+                }
+            }
+            finally
+            {
+                _isUpdatingPreset = false;
+            }
+        }
+    }
+
+    /// <summary>Transaction in progress — locks nozzle switching and preset editing.</summary>
+    public bool IsBusy
+    {
+        get => _isBusy;
+        private set
+        {
+            if (SetProperty(ref _isBusy, value))
+            {
+                PostStartCommand.RaiseCanExecuteChanged();
+            }
+        }
     }
 
     public string StatusText
@@ -165,6 +239,18 @@ public sealed class PostViewModel : ObservableObject
     {
         get => _activeNozzleText;
         private set => SetProperty(ref _activeNozzleText, value);
+    }
+
+    /// <summary>Active nozzle + product display for live counters, e.g. "Пистолет 2 — A-92".</summary>
+    public string ActiveNozzleProductText
+    {
+        get
+        {
+            int num = Engine.Snapshot.ActiveNozzleNumber;
+            if (num <= 0) return "";
+            NozzleViewModel? nozzle = Nozzles.FirstOrDefault(n => n.Number == num);
+            return nozzle is not null ? $"Пистолет {nozzle.Number} — {nozzle.ProductName}" : $"Пистолет {num}";
+        }
     }
 
     public string LastPayload
@@ -216,9 +302,15 @@ public sealed class PostViewModel : ObservableObject
             vm?.ApplySnapshot(nozzleSnapshot);
         }
 
+        // Lock nozzle switching during active transaction
+        bool isTransacting = snapshot.Condition is TatsunoPumpCondition.Fuelling or TatsunoPumpCondition.NozzleLifted;
+        foreach (NozzleViewModel nozzle in Nozzles)
+        {
+            nozzle.IsLocked = isTransacting && !nozzle.IsLifted;
+        }
+        IsBusy = isTransacting;
+
         // Only auto-select nozzle when it's physically active (lifted or fueling).
-        // When NozzleStored/Finished, Q61 still reports last active nozzle number —
-        // don't override user's manual selection in that case.
         if (snapshot.ActiveNozzleNumber > 0 &&
             snapshot.Condition is TatsunoPumpCondition.NozzleLifted or TatsunoPumpCondition.Fuelling)
         {
@@ -226,6 +318,7 @@ public sealed class PostViewModel : ObservableObject
         }
 
         Raise(nameof(HasLiftedNozzle));
+        Raise(nameof(ActiveNozzleProductText));
     }
 
     public void SelectNozzle(int number)
@@ -245,13 +338,11 @@ public sealed class PostViewModel : ObservableObject
 
     /// <summary>
     /// Check if communication has been lost. Called periodically by watchdog timer.
-    /// If no successful RX for more than <paramref name="timeout"/>, marks as НЕТ СВЯЗИ.
     /// </summary>
     public void CheckComms(TimeSpan timeout)
     {
         if (_lastCommsUtc == DateTime.MinValue)
         {
-            // Never received anything yet — if we're connected, it's lost
             CommsLost = true;
             return;
         }

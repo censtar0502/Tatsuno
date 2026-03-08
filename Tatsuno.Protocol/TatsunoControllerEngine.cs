@@ -198,9 +198,13 @@ public sealed class TatsunoControllerEngine
         {
             case TatsunoPowerOnMessage powerOnMessage:
                 // Q00 — Power-ON CRC handshake. Auto-queue A00 response.
-                // Per reference log: Q00 with "43AF" → A00 with CRC acknowledgment.
-                string ackPayload = TatsunoCodec.BuildCrcAcknowledgmentPayload(powerOnMessage.CrcHexData);
-                Enqueue(ackPayload, TatsunoCommandKind.CrcAcknowledgment, $"CRC ack (Q00 data={powerOnMessage.CrcHexData})", allowedWhenUncontrollable: true);
+                // "43AF" → "C8" is confirmed empirically on multiple boards.
+                string? ackPayload = TatsunoCodec.BuildCrcAcknowledgmentPayload(powerOnMessage.CrcHexData);
+                if (ackPayload is not null)
+                {
+                    Enqueue(ackPayload, TatsunoCommandKind.CrcAcknowledgment, $"CRC ack (Q00 data={powerOnMessage.CrcHexData})", allowedWhenUncontrollable: true);
+                }
+                // If unknown challenge, engine stores it in LastPayload for logging by caller
                 break;
 
             case TatsunoPumpConditionMessage conditionMessage:

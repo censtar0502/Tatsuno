@@ -12,13 +12,14 @@ public sealed class NozzleViewModel : ObservableObject
     private string _totalsAmountText = "0";
     private bool _isLifted;
     private bool _isSelected;
+    private bool _isLocked;
 
     public NozzleViewModel(int number, string productName, int configuredPriceDisplay)
     {
         Number = number;
         _productName = productName;
         _priceText = configuredPriceDisplay.ToString();
-        SelectCommand = new RelayCommand(() => Selected?.Invoke(this));
+        SelectCommand = new RelayCommand(() => Selected?.Invoke(this), () => !IsLocked);
     }
 
     public event Action<NozzleViewModel>? Selected;
@@ -71,6 +72,18 @@ public sealed class NozzleViewModel : ObservableObject
             if (SetProperty(ref _isSelected, value))
             {
                 Raise(nameof(ProductBrush));
+            }
+        }
+    }
+
+    public bool IsLocked
+    {
+        get => _isLocked;
+        set
+        {
+            if (SetProperty(ref _isLocked, value))
+            {
+                SelectCommand.RaiseCanExecuteChanged();
             }
         }
     }

@@ -44,7 +44,6 @@ public sealed class MainViewModel : ObservableObject
     private int _framesBadBcc;
     private DateTime? _lastRx;
     private string _logFilePath = "—";
-    private string _presetDisplayText = "12500";
     private PostViewModel? _selectedPost;
     private PostViewModel? _dashboardPost;
 
@@ -60,8 +59,6 @@ public sealed class MainViewModel : ObservableObject
         ApplyPostsCommand = new RelayCommand(ApplyPosts, () => !IsConnected);
         ConnectCommand = new RelayCommand(Connect, () => !IsConnected && !string.IsNullOrWhiteSpace(SelectedPort));
         DisconnectCommand = new RelayCommand(Disconnect, () => IsConnected);
-        StartAmountCommand = new RelayCommand(StartAmountPreset, () => DashboardPost is not null);
-        StartVolumeCommand = new RelayCommand(StartVolumePreset, () => DashboardPost is not null);
         CancelCommand = new RelayCommand(QueueCancel, () => DashboardPost is not null);
         RequestStatusCommand = new RelayCommand(QueueStatus, () => DashboardPost is not null);
         RequestTotalsCommand = new RelayCommand(QueueTotals, () => DashboardPost is not null);
@@ -89,8 +86,6 @@ public sealed class MainViewModel : ObservableObject
     public RelayCommand ApplyPostsCommand { get; }
     public RelayCommand ConnectCommand { get; }
     public RelayCommand DisconnectCommand { get; }
-    public RelayCommand StartAmountCommand { get; }
-    public RelayCommand StartVolumeCommand { get; }
     public RelayCommand CancelCommand { get; }
     public RelayCommand RequestStatusCommand { get; }
     public RelayCommand RequestTotalsCommand { get; }
@@ -190,12 +185,6 @@ public sealed class MainViewModel : ObservableObject
         private set => SetProperty(ref _logFilePath, value);
     }
 
-    public string PresetDisplayText
-    {
-        get => _presetDisplayText;
-        set => SetProperty(ref _presetDisplayText, value);
-    }
-
     public PostViewModel? SelectedPost
     {
         get => _selectedPost;
@@ -230,8 +219,6 @@ public sealed class MainViewModel : ObservableObject
                 Raise(nameof(DashboardLastPayload));
                 Raise(nameof(DashboardLastUpdateText));
                 Raise(nameof(DashboardControllabilityText));
-                StartAmountCommand.RaiseCanExecuteChanged();
-                StartVolumeCommand.RaiseCanExecuteChanged();
                 CancelCommand.RaiseCanExecuteChanged();
                 RequestStatusCommand.RaiseCanExecuteChanged();
                 RequestTotalsCommand.RaiseCanExecuteChanged();
@@ -282,13 +269,13 @@ public sealed class MainViewModel : ObservableObject
         // Only one nozzle can dispense at a time
         var post = new PostViewModel(1, "1", 3);
         post.Selected += HandlePostSelected;
-        post.StartAmountRequested += HandlePostStartAmount;
-        post.StartVolumeRequested += HandlePostStartVolume;
+        post.StartRequested += HandlePostStart;
         post.CancelRequested += HandlePostCancel;
         post.StatusRequested += HandlePostStatus;
         post.TotalsRequested += HandlePostTotals;
         post.LockRequested += HandlePostLock;
         post.ReleaseRequested += HandlePostRelease;
+        post.SavePricesRequested += HandlePostSavePrices;
         post.ApplySnapshot();
         Posts.Add(post);
 
@@ -533,53 +520,6 @@ public sealed class MainViewModel : ObservableObject
         AddLog("TX", RenderBytes(ack));
     }
 
-    private void StartAmountPreset()
-    {
-        PostViewModel? post = DashboardPost;
-        NozzleViewModel? nozzle = post?.SelectedNozzle;
-        if (post is null || nozzle is null) return;
-
-        // Reference program ALWAYS uses Volume kind, converting amount to volume:
-        // volumeRaw = (amountRaw * 100) / priceRaw
-        int amountRaw = TatsunoValueFormatter.ParseDisplayedMoneyToRaw(PresetDisplayText);
-        int priceRaw = nozzle.ConfiguredPriceRaw;
-        if (priceRaw <= 0)
-        {
-            AddLog("SYS", $"ERROR: Price is zero for nozzle {nozzle.Number}, cannot calculate volume");
-            return;
-        }
-        int volumeRaw = (amountRaw * 100) / priceRaw;
-
-        var products = BuildSelectedNozzlePrice(post, nozzle);
-        string payload = TatsunoCodec.BuildAuthorizeMultiPricePayload(
-            TatsunoAuthorizationTerm.VolumeLimited,
-            TatsunoPresetKind.Volume,
-            volumeRaw,
-            products);
-
-        AddLog("TXN", $"Amount→Volume conversion: amount={PresetDisplayText} amountRaw={amountRaw} priceRaw={priceRaw} → volumeRaw={volumeRaw} ({volumeRaw / 100.0:F2}L)");
-        LogTransactionDetails("StartAmountPreset(Dashboard)", post, nozzle, "Volume(from Amount)", PresetDisplayText, volumeRaw, payload);
-        post.Engine.Enqueue(payload, TatsunoCommandKind.AuthorizeMultiPrice, $"authorize amount→volume nozzle {nozzle.Number} amount={PresetDisplayText} volume={volumeRaw}");
-    }
-
-    private void StartVolumePreset()
-    {
-        PostViewModel? post = DashboardPost;
-        NozzleViewModel? nozzle = post?.SelectedNozzle;
-        if (post is null || nozzle is null) return;
-
-        int volumeRaw = TatsunoValueFormatter.ParseDisplayedVolumeToRaw(PresetDisplayText);
-        var products = BuildSelectedNozzlePrice(post, nozzle);
-        string payload = TatsunoCodec.BuildAuthorizeMultiPricePayload(
-            TatsunoAuthorizationTerm.VolumeLimited,
-            TatsunoPresetKind.Volume,
-            volumeRaw,
-            products);
-
-        LogTransactionDetails("StartVolumePreset(Dashboard)", post, nozzle, "Volume", PresetDisplayText, volumeRaw, payload);
-        post.Engine.Enqueue(payload, TatsunoCommandKind.AuthorizeMultiPrice, $"authorize volume nozzle {nozzle.Number} volume={PresetDisplayText}");
-    }
-
     private void QueueCancel()
     {
         if (DashboardPost is null) return;
@@ -637,21 +577,35 @@ public sealed class MainViewModel : ObservableObject
         return products;
     }
 
-    private void HandlePostStartAmount(PostViewModel post)
+    private void HandlePostStart(PostViewModel post)
     {
         NozzleViewModel? nozzle = post.SelectedNozzle;
         if (nozzle is null) return;
 
-        // Reference program ALWAYS uses Volume kind, converting amount to volume:
-        // volumeRaw = (amountRaw * 100) / priceRaw
-        int amountRaw = TatsunoValueFormatter.ParseDisplayedMoneyToRaw(post.PresetDisplayText);
         int priceRaw = nozzle.ConfiguredPriceRaw;
         if (priceRaw <= 0)
         {
             AddLog("SYS", $"ERROR: Price is zero for nozzle {nozzle.Number}, cannot calculate volume");
             return;
         }
-        int volumeRaw = (amountRaw * 100) / priceRaw;
+
+        int volumeRaw;
+        string presetKindLabel;
+
+        if (post.LastEditWasVolume)
+        {
+            // User entered volume directly
+            volumeRaw = TatsunoValueFormatter.ParseDisplayedVolumeToRaw(post.PresetVolumeText);
+            presetKindLabel = "Volume";
+        }
+        else
+        {
+            // User entered amount → convert to volume: volumeRaw = amountRaw * 100 / priceRaw
+            int amountRaw = TatsunoValueFormatter.ParseDisplayedMoneyToRaw(post.PresetAmountText);
+            volumeRaw = amountRaw * 100 / priceRaw;
+            presetKindLabel = "Volume(from Amount)";
+            AddLog("TXN", $"Amount→Volume conversion: amount={post.PresetAmountText} amountRaw={amountRaw} priceRaw={priceRaw} → volumeRaw={volumeRaw} ({volumeRaw / 100.0:F2}L)");
+        }
 
         var products = BuildSelectedNozzlePrice(post, nozzle);
         string payload = TatsunoCodec.BuildAuthorizeMultiPricePayload(
@@ -660,26 +614,9 @@ public sealed class MainViewModel : ObservableObject
             volumeRaw,
             products);
 
-        AddLog("TXN", $"Amount→Volume conversion: amount={post.PresetDisplayText} amountRaw={amountRaw} priceRaw={priceRaw} → volumeRaw={volumeRaw} ({volumeRaw / 100.0:F2}L)");
-        LogTransactionDetails("HandlePostStartAmount(Post)", post, nozzle, "Volume(from Amount)", post.PresetDisplayText, volumeRaw, payload);
-        post.Engine.Enqueue(payload, TatsunoCommandKind.AuthorizeMultiPrice, $"authorize amount→volume nozzle {nozzle.Number} amount={post.PresetDisplayText} volume={volumeRaw}");
-    }
-
-    private void HandlePostStartVolume(PostViewModel post)
-    {
-        NozzleViewModel? nozzle = post.SelectedNozzle;
-        if (nozzle is null) return;
-
-        int volumeRaw = TatsunoValueFormatter.ParseDisplayedVolumeToRaw(post.PresetDisplayText);
-        var products = BuildSelectedNozzlePrice(post, nozzle);
-        string payload = TatsunoCodec.BuildAuthorizeMultiPricePayload(
-            TatsunoAuthorizationTerm.VolumeLimited,
-            TatsunoPresetKind.Volume,
-            volumeRaw,
-            products);
-
-        LogTransactionDetails("HandlePostStartVolume(Post)", post, nozzle, "Volume", post.PresetDisplayText, volumeRaw, payload);
-        post.Engine.Enqueue(payload, TatsunoCommandKind.AuthorizeMultiPrice, $"authorize volume nozzle {nozzle.Number} volume={post.PresetDisplayText}");
+        string presetText = post.LastEditWasVolume ? post.PresetVolumeText : post.PresetAmountText;
+        LogTransactionDetails("HandlePostStart", post, nozzle, presetKindLabel, presetText, volumeRaw, payload);
+        post.Engine.Enqueue(payload, TatsunoCommandKind.AuthorizeMultiPrice, $"authorize nozzle {nozzle.Number} volume={volumeRaw}");
     }
 
     private void HandlePostCancel(PostViewModel post)
@@ -710,6 +647,15 @@ public sealed class MainViewModel : ObservableObject
     {
         post.Engine.Enqueue(TatsunoCodec.BuildReleasePumpLockPayload(), TatsunoCommandKind.ReleasePumpLock, "release pump lock");
         AddLog("SYS", $"Queue {post.Header}: release lock");
+    }
+
+    private void HandlePostSavePrices(PostViewModel post)
+    {
+        AddLog("SYS", $"Prices saved for {post.Header}:");
+        foreach (NozzleViewModel n in post.Nozzles)
+        {
+            AddLog("SYS", $"  Nozzle {n.Number} ({n.ProductName}): {n.PriceText} (raw={n.ConfiguredPriceRaw})");
+        }
     }
 
     /// <summary>

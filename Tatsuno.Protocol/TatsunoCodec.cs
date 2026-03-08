@@ -60,29 +60,22 @@ public static class TatsunoCodec
 
     /// <summary>
     /// Build A00 CRC acknowledgment payload for Q00 Power-ON handshake.
-    /// Per Section 7-2 of Tatsuno protocol specification:
-    /// 1. Parse received CRC hex data (4 chars = 2 bytes)
-    /// 2. Add upper byte + lower byte
-    /// 3. Convert result to 2-char uppercase hex
+    /// The boot challenge "43AF" → response "C8" is confirmed empirically
+    /// across multiple cold-start logs on different motherboards.
+    /// The exact algorithm for deriving C8 from 43AF is NOT established —
+    /// the PDF CRC section was manually crossed out in the available spec.
+    /// For any unknown challenge, returns null (caller should log it).
     /// </summary>
-    public static string BuildCrcAcknowledgmentPayload(string crcHexData)
+    public static string? BuildCrcAcknowledgmentPayload(string crcHexData)
     {
-        if (crcHexData.Length >= 4)
+        // Known empirically confirmed boot challenges
+        if (string.Equals(crcHexData, "43AF", StringComparison.OrdinalIgnoreCase))
         {
-            try
-            {
-                byte upper = Convert.ToByte(crcHexData.Substring(0, 2), 16);
-                byte lower = Convert.ToByte(crcHexData.Substring(2, 2), 16);
-                byte sum = (byte)(upper + lower);
-                return $"@A00{sum:X2}";
-            }
-            catch (FormatException)
-            {
-                // If hex parsing fails, return empty acknowledgment
-            }
+            return "@A00C8";
         }
 
-        return "@A0000";
+        // Unknown challenge — caller should log and skip
+        return null;
     }
 
     public static string BuildRequestStatusPayload() => "@A15";
