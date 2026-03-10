@@ -26,6 +26,7 @@ public sealed class PostViewModel : ObservableObject
     private bool _isBusy;
     private bool _commsLost;
     private DateTime _lastCommsUtc = DateTime.MinValue;
+    private int? _pendingStartNozzleNumber;
 
     public PostViewModel(int postIndex, string addressLabel, int nozzlesCount)
     {
@@ -265,6 +266,22 @@ public sealed class PostViewModel : ObservableObject
         private set => SetProperty(ref _lastUpdateText, value);
     }
 
+    /// <summary>Pending nozzle number after Start button press, waiting for lift confirmation.</summary>
+    public int? PendingStartNozzleNumber
+    {
+        get => _pendingStartNozzleNumber;
+        set
+        {
+            if (SetProperty(ref _pendingStartNozzleNumber, value))
+            {
+                Raise(nameof(HasPendingAuthorization));
+            }
+        }
+    }
+
+    /// <summary>True when there is a pending authorization waiting for nozzle lift.</summary>
+    public bool HasPendingAuthorization => _pendingStartNozzleNumber.HasValue;
+
     public bool HasLiftedNozzle => Nozzles.Any(n => n.IsLifted);
 
     public NozzleViewModel? SelectedNozzle => Nozzles.FirstOrDefault(n => n.IsSelected);
@@ -350,6 +367,40 @@ public sealed class PostViewModel : ObservableObject
             return;
 
         CommsLost = (DateTime.UtcNow - _lastCommsUtc) > timeout;
+    }
+
+    /// <summary>
+    /// Auto-authorize when correct nozzle is lifted after Start button press.
+    /// If wrong nozzle is lifted, cancel authorization.
+    /// </summary>
+    public void TriggerAutoAuthorize()
+    {
+        if (!HasPendingAuthorization)
+        {
+            return;
+        }
+
+        int liftedNozzleNumber = Engine.Snapshot.ActiveNozzleNumber;
+        int? pendingNozzleNumber= PendingStartNozzleNumber;
+
+        if (pendingNozzleNumber == null || liftedNozzleNumber == 0)
+        {
+            return;
+        }
+
+        if (liftedNozzleNumber == pendingNozzleNumber)
+        {
+            // Correct nozzle lifted — allow transaction to continue
+            // Do NOT send A11 again (already sent in HandlePostStart)
+            PendingStartNozzleNumber = null;
+        }
+        else
+        {
+            // Wrong nozzle lifted — cancel authorization
+            var payload = TatsunoCodec.BuildCancelAuthorizationPayload();
+            Engine.Enqueue(payload, TatsunoCommandKind.CancelAuthorization, "Cancel wrong nozzle authorization");
+            PendingStartNozzleNumber = null;
+        }
     }
 
     private void HandleNozzleSelected(NozzleViewModel nozzle)

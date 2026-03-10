@@ -507,21 +507,24 @@ public sealed class MainViewModel : ObservableObject
                         break;
 
                     case TatsunoRxItemType.Frame:
-                        AddLog("RX", $"{owner.Header} {(item.BccOk ? "OK" : "BAD")}: {item.PayloadString}");
-                        if (item.BccOk && item.PayloadString is not null)
-                        {
-                            FramesOk++;
-                            owner.Engine.HandlePayload(item.PayloadString, item.TimestampLocal);
-                            owner.ApplySnapshot();
-                            UpdateDashboardPost();
-                            UpdateLiftedInfo();
-                            AckFrame();
-                        }
-                        else
-                        {
-                            FramesBadBcc++;
-                        }
-                        break;
+                      AddLog("RX", $"{owner.Header} {(item.BccOk ? "OK" : "BAD")}: {item.PayloadString}");
+                     if (item.BccOk && item.PayloadString is not null)
+                     {
+                         FramesOk++;
+                         owner.Engine.HandlePayload(item.PayloadString, item.TimestampLocal);
+                        owner.ApplySnapshot();
+                        UpdateDashboardPost();
+                        UpdateLiftedInfo();
+                        AckFrame();
+                        
+                       // Check if correct nozzle was lifted after Start
+                       owner.TriggerAutoAuthorize();
+                     }
+                    else
+                     {
+                         FramesBadBcc++;
+                     }
+                    break;
                 }
             }
         });
@@ -585,7 +588,7 @@ public sealed class MainViewModel : ObservableObject
 
         foreach (NozzleViewModel n in post.Nozzles.OrderBy(x => x.Number))
         {
-            if (n.Number == liftedNozzleNumber)
+            if (n.Number == selectedNozzleNumber)
             {
                 products.Add((TatsunoUnitPriceFlag.Cash, n.ConfiguredPriceRaw));
             }
@@ -608,21 +611,6 @@ public sealed class MainViewModel : ObservableObject
         NozzleViewModel? selectedNozzle = post.SelectedNozzle;
         if (selectedNozzle is null) return;
 
-        // CRITICAL: Check if the physically lifted nozzle matches the selected nozzle
-        int liftedNozzleNumber = post.Nozzles.FirstOrDefault(n => n.IsLifted)?.Number ?? 0;
-        
-        if (liftedNozzleNumber == 0)
-        {
-            AddLog("SYS", $"ERROR: Start requested but no nozzle is physically lifted. Please lift nozzle {selectedNozzle.Number} first.");
-            return;
-        }
-        
-        if (liftedNozzleNumber != selectedNozzle.Number)
-        {
-            AddLog("SYS", $"ERROR: Nozzle mismatch! Selected=#{selectedNozzle.Number}, Lifted=#{liftedNozzleNumber}. A11 will NOT be sent.");
-            return;
-        }
-
         int priceRaw = selectedNozzle.ConfiguredPriceRaw;
         if (priceRaw <= 0)
         {
@@ -631,38 +619,41 @@ public sealed class MainViewModel : ObservableObject
         }
 
         int volumeRaw;
-       string presetKindLabel;
+      string presetKindLabel;
 
         if (post.LastEditWasVolume)
         {
             // User entered volume directly
             volumeRaw = TatsunoValueFormatter.ParseDisplayedVolumeToRaw(post.PresetVolumeText);
-           presetKindLabel = "Volume";
+          presetKindLabel = "Volume";
         }
         else
         {
             // User entered amount → convert to volume: volumeRaw = amountRaw * 100 / priceRaw
             int amountRaw = TatsunoValueFormatter.ParseDisplayedMoneyToRaw(post.PresetAmountText);
             volumeRaw = amountRaw * 100 / priceRaw;
-           presetKindLabel = "Volume(from Amount)";
+          presetKindLabel = "Volume(from Amount)";
             AddLog("TXN", $"Amount→Volume conversion: amount={post.PresetAmountText} amountRaw={amountRaw} priceRaw={priceRaw} → volumeRaw={volumeRaw} ({volumeRaw / 100.0:F2}L)");
         }
 
-        // Build price list with ONLY the lifted nozzle active
-        var products = BuildLiftedNozzlePrice(post, liftedNozzleNumber);
-       string payload = TatsunoCodec.BuildAuthorizeMultiPricePayload(
+        // Build price list with ONLY the selected nozzle active
+        var products = BuildSelectedNozzlePrice(post, selectedNozzle.Number);
+      string payload = TatsunoCodec.BuildAuthorizeMultiPricePayload(
             TatsunoAuthorizationTerm.VolumeLimited,
             TatsunoPresetKind.Volume,
             volumeRaw,
-           products);
+          products);
 
-       string presetText = post.LastEditWasVolume ? post.PresetVolumeText: post.PresetAmountText;
+      string presetText = post.LastEditWasVolume ? post.PresetVolumeText: post.PresetAmountText;
         LogTransactionDetails("HandlePostStart", post, selectedNozzle, presetKindLabel, presetText, volumeRaw, payload);
         
-        post.Engine.Enqueue(payload, TatsunoCommandKind.AuthorizeMultiPrice, $"authorize nozzle {liftedNozzleNumber} volume={volumeRaw}");
+        // Send A11 IMMEDIATELY to show preset on display
+        post.Engine.Enqueue(payload, TatsunoCommandKind.AuthorizeMultiPrice, $"authorize nozzle {selectedNozzle.Number} volume={volumeRaw}");
         
-        // Reset pending state to prevent re-authorization on same nozzle
-        post.Engine.ResetPendingAfterAuthorization();
+        // Store pending nozzle number for later lift verification
+        post.PendingStartNozzleNumber = selectedNozzle.Number;
+        
+        AddLog("SYS", $"A11 sent for nozzle {selectedNozzle.Number}. Waiting for correct nozzle lift...");
     }
 
     private void HandlePostCancel(PostViewModel post)
