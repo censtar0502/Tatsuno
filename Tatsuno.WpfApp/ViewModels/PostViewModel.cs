@@ -327,6 +327,9 @@ public sealed class PostViewModel : ObservableObject
         {
             nozzle.IsSelected = nozzle.Number == number;
         }
+        // BUG FIX: raise SelectedNozzle so PresetVolumeText/PresetAmountText
+        // cross-calculations use the correct nozzle after auto-selection
+        Raise(nameof(SelectedNozzle));
     }
 
     /// <summary>Called on every successful RX from this ТРК (EOT, frame, etc.).</summary>
@@ -341,11 +344,10 @@ public sealed class PostViewModel : ObservableObject
     /// </summary>
     public void CheckComms(TimeSpan timeout)
     {
+        // BUG FIX: when _lastCommsUtc == MinValue we have never received data yet —
+        // this is normal right after connecting.  Do NOT flag as lost; just wait.
         if (_lastCommsUtc == DateTime.MinValue)
-        {
-            CommsLost = true;
             return;
-        }
 
         CommsLost = (DateTime.UtcNow - _lastCommsUtc) > timeout;
     }

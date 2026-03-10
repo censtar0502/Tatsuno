@@ -368,20 +368,26 @@ public sealed class MainViewModel : ObservableObject
         _pollCts = new CancellationTokenSource();
         CancellationToken token = _pollCts.Token;
 
+        // BUG FIX: capture a snapshot of the Posts list on the UI thread before the loop;
+        // ObservableCollection is not thread-safe for reads from background threads.
+        // Posts can only be modified while disconnected (command guard), so this snapshot
+        // is stable for the entire lifetime of the polling session.
+        PostViewModel[] postSnapshot = Application.Current.Dispatcher.Invoke(() => Posts.ToArray());
+
         _ = Task.Run(async () =>
         {
             while (!token.IsCancellationRequested)
             {
                 try
                 {
-                    if (Posts.Count == 0 || _session is null)
+                    if (postSnapshot.Length == 0 || _session is null)
                     {
                         await Task.Delay(150, token);
                         continue;
                     }
 
-                    _roundRobinIndex = (_roundRobinIndex + 1) % Posts.Count;
-                    PostViewModel post = Posts[_roundRobinIndex];
+                    _roundRobinIndex = (_roundRobinIndex + 1) % postSnapshot.Length;
+                    PostViewModel post = postSnapshot[_roundRobinIndex];
                     TatsunoControllerAction action;
                     lock (_sync)
                     {
@@ -466,6 +472,15 @@ public sealed class MainViewModel : ObservableObject
                             UpdateDashboardPost();
                             AddLog("RX", $"{owner.Header} <EOT>");
                         }
+                        else if (item.Control == TatsunoControlBytes.NAK)
+                        {
+                            AddLog("RX", $"{owner.Header} <NAK> — ТРК отвергла кадр!");
+                        }
+                        // Log any diagnostic info from the engine
+                        if (owner.Engine.LastControlByteInfo is not null)
+                        {
+                            AddLog("SYS", $"{owner.Header}: {owner.Engine.LastControlByteInfo}");
+                        }
                         break;
 
                     case TatsunoRxItemType.Dle0:
@@ -484,6 +499,11 @@ public sealed class MainViewModel : ObservableObject
                     case TatsunoRxItemType.Dle1:
                         owner.Engine.HandleDle1(DateTime.UtcNow);
                         AddLog("RX", $"{owner.Header} <DLE>1");
+                        // Log confirmation of which command was accepted
+                        if (owner.Engine.LastAcceptedCommandInfo is not null)
+                        {
+                            AddLog("TXN", $"{owner.Header}: {owner.Engine.LastAcceptedCommandInfo}");
+                        }
                         break;
 
                     case TatsunoRxItemType.Frame:
@@ -557,66 +577,92 @@ public sealed class MainViewModel : ObservableObject
 
     /// <summary>
     /// Build product price list for A11 multi-price command.
-    /// Reference program sends price ONLY for the selected nozzle's position, all others = 0.
+    /// ONLY the selected nozzle gets Cash flag with real price, all others get Invalid flag with 0.
     /// </summary>
-    private static List<(TatsunoUnitPriceFlag Flag, int UnitPriceRaw)> BuildSelectedNozzlePrice(PostViewModel post, NozzleViewModel selectedNozzle)
+    private static List<(TatsunoUnitPriceFlag Flag, int UnitPriceRaw)> BuildSelectedNozzlePrice(PostViewModel post, int selectedNozzleNumber)
     {
         var products = new List<(TatsunoUnitPriceFlag Flag, int UnitPriceRaw)>();
-        foreach (NozzleViewModel n in post.Nozzles)
+
+        foreach (NozzleViewModel n in post.Nozzles.OrderBy(x => x.Number))
         {
-            if (n.Number == selectedNozzle.Number)
+            if (n.Number == liftedNozzleNumber)
             {
-                int raw = n.ConfiguredPriceRaw;
-                products.Add(raw > 0 ? (TatsunoUnitPriceFlag.Credit, raw) : (TatsunoUnitPriceFlag.Unknown, 0));
+                products.Add((TatsunoUnitPriceFlag.Cash, n.ConfiguredPriceRaw));
             }
             else
             {
-                products.Add((TatsunoUnitPriceFlag.Unknown, 0));
+                products.Add((TatsunoUnitPriceFlag.Invalid, 0));
             }
         }
+
+        while (products.Count < 6)
+        {
+            products.Add((TatsunoUnitPriceFlag.Invalid, 0));
+        }
+
         return products;
     }
 
     private void HandlePostStart(PostViewModel post)
     {
-        NozzleViewModel? nozzle = post.SelectedNozzle;
-        if (nozzle is null) return;
+        NozzleViewModel? selectedNozzle = post.SelectedNozzle;
+        if (selectedNozzle is null) return;
 
-        int priceRaw = nozzle.ConfiguredPriceRaw;
+        // CRITICAL: Check if the physically lifted nozzle matches the selected nozzle
+        int liftedNozzleNumber = post.Nozzles.FirstOrDefault(n => n.IsLifted)?.Number ?? 0;
+        
+        if (liftedNozzleNumber == 0)
+        {
+            AddLog("SYS", $"ERROR: Start requested but no nozzle is physically lifted. Please lift nozzle {selectedNozzle.Number} first.");
+            return;
+        }
+        
+        if (liftedNozzleNumber != selectedNozzle.Number)
+        {
+            AddLog("SYS", $"ERROR: Nozzle mismatch! Selected=#{selectedNozzle.Number}, Lifted=#{liftedNozzleNumber}. A11 will NOT be sent.");
+            return;
+        }
+
+        int priceRaw = selectedNozzle.ConfiguredPriceRaw;
         if (priceRaw <= 0)
         {
-            AddLog("SYS", $"ERROR: Price is zero for nozzle {nozzle.Number}, cannot calculate volume");
+            AddLog("SYS", $"ERROR: Price is zero for nozzle {selectedNozzle.Number}, cannot calculate volume");
             return;
         }
 
         int volumeRaw;
-        string presetKindLabel;
+       string presetKindLabel;
 
         if (post.LastEditWasVolume)
         {
             // User entered volume directly
             volumeRaw = TatsunoValueFormatter.ParseDisplayedVolumeToRaw(post.PresetVolumeText);
-            presetKindLabel = "Volume";
+           presetKindLabel = "Volume";
         }
         else
         {
             // User entered amount → convert to volume: volumeRaw = amountRaw * 100 / priceRaw
             int amountRaw = TatsunoValueFormatter.ParseDisplayedMoneyToRaw(post.PresetAmountText);
             volumeRaw = amountRaw * 100 / priceRaw;
-            presetKindLabel = "Volume(from Amount)";
+           presetKindLabel = "Volume(from Amount)";
             AddLog("TXN", $"Amount→Volume conversion: amount={post.PresetAmountText} amountRaw={amountRaw} priceRaw={priceRaw} → volumeRaw={volumeRaw} ({volumeRaw / 100.0:F2}L)");
         }
 
-        var products = BuildSelectedNozzlePrice(post, nozzle);
-        string payload = TatsunoCodec.BuildAuthorizeMultiPricePayload(
+        // Build price list with ONLY the lifted nozzle active
+        var products = BuildLiftedNozzlePrice(post, liftedNozzleNumber);
+       string payload = TatsunoCodec.BuildAuthorizeMultiPricePayload(
             TatsunoAuthorizationTerm.VolumeLimited,
             TatsunoPresetKind.Volume,
             volumeRaw,
-            products);
+           products);
 
-        string presetText = post.LastEditWasVolume ? post.PresetVolumeText : post.PresetAmountText;
-        LogTransactionDetails("HandlePostStart", post, nozzle, presetKindLabel, presetText, volumeRaw, payload);
-        post.Engine.Enqueue(payload, TatsunoCommandKind.AuthorizeMultiPrice, $"authorize nozzle {nozzle.Number} volume={volumeRaw}");
+       string presetText = post.LastEditWasVolume ? post.PresetVolumeText: post.PresetAmountText;
+        LogTransactionDetails("HandlePostStart", post, selectedNozzle, presetKindLabel, presetText, volumeRaw, payload);
+        
+        post.Engine.Enqueue(payload, TatsunoCommandKind.AuthorizeMultiPrice, $"authorize nozzle {liftedNozzleNumber} volume={volumeRaw}");
+        
+        // Reset pending state to prevent re-authorization on same nozzle
+        post.Engine.ResetPendingAfterAuthorization();
     }
 
     private void HandlePostCancel(PostViewModel post)
@@ -726,6 +772,8 @@ public sealed class MainViewModel : ObservableObject
     /// <summary>
     /// Reference program sends A20 (totals request) every ~15 seconds during idle.
     /// This keeps totals up-to-date and ensures ТРК data consistency.
+    /// IMPORTANT: Do NOT send A20 during active transactions (NozzleLifted / Fuelling)
+    /// as it may interfere with A11 authorization.
     /// </summary>
     private void OnPeriodicTotalsTick(object? sender, EventArgs e)
     {
@@ -734,8 +782,10 @@ public sealed class MainViewModel : ObservableObject
         foreach (PostViewModel post in Posts)
         {
             // Only request totals when engine is idle (no pending commands)
-            // to avoid interfering with active transactions
-            if (post.Engine.PendingCount == 0)
+            // AND ТРК is not in an active transaction state.
+            // Sending A20 between A11 and fueling start could clear authorization.
+            bool isActive = post.Engine.Snapshot.Condition is TatsunoPumpCondition.NozzleLifted or TatsunoPumpCondition.Fuelling;
+            if (post.Engine.PendingCount == 0 && !isActive)
             {
                 post.Engine.Enqueue(TatsunoCodec.BuildRequestTotalsPayload(), TatsunoCommandKind.RequestTotals, "periodic totals", allowedWhenUncontrollable: true);
             }
@@ -762,8 +812,13 @@ public sealed class MainViewModel : ObservableObject
         string dir = Path.Combine(AppContext.BaseDirectory, "logs");
         Directory.CreateDirectory(dir);
         string path = Path.Combine(dir, $"tatsuno_{portName}_{DateTime.Now:yyyyMMdd_HHmmss}.log");
-        _fileLog = new StreamWriter(path) { AutoFlush = true };
+        _fileLog = new StreamWriter(path, false, System.Text.Encoding.UTF8) { AutoFlush = true };
         LogFilePath = path;
+
+        // Write connection header (matches reference log format)
+        _fileLog.WriteLine($"COM {portName}");
+        _fileLog.WriteLine($"Скорость {BaudRate}");
+        _fileLog.WriteLine($"Биты данных={DataBits}, Стоп биты={StopBits}, Чётность={Parity}");
     }
 
     private void CloseFileLog()
@@ -775,9 +830,15 @@ public sealed class MainViewModel : ObservableObject
 
     private void WriteRawToFile(string prefix, ReadOnlySpan<byte> bytes)
     {
+        // BUG FIX: WriteRawToFile is called from 3 threads (RX task, poll task, dispatcher)
+        // so we must lock around _fileLog writes to prevent interleaved/corrupt output.
+        string line = $"<{DateTime.Now:yyyyMMddHHmmss.fff} {prefix}>\n{RenderBytes(bytes)}";
         try
         {
-            _fileLog?.WriteLine($"<{DateTime.Now:yyyyMMddHHmmss.fff} {prefix}>\n{RenderBytes(bytes)}");
+            lock (_sync)
+            {
+                _fileLog?.WriteLine(line);
+            }
         }
         catch
         {
@@ -789,15 +850,45 @@ public sealed class MainViewModel : ObservableObject
         return string.Concat(bytes.ToArray().Select(RenderByte));
     }
 
+    /// <summary>
+    /// Render a byte as a human-readable string matching reference log format.
+    /// All standard ASCII control characters use their mnemonic names.
+    /// </summary>
     private static string RenderByte(byte value) => value switch
     {
         0x00 => "<NUL>",
+        0x01 => "<SOH>",
         0x02 => "<STX>",
         0x03 => "<ETX>",
         0x04 => "<EOT>",
         0x05 => "<ENQ>",
+        0x06 => "<ACK>",
+        0x07 => "<BEL>",
+        0x08 => "<BS>",
+        0x09 => "<HT>",
+        0x0A => "<LF>",
+        0x0B => "<VT>",
+        0x0C => "<FF>",
+        0x0D => "<CR>",
+        0x0E => "<SO>",
+        0x0F => "<SI>",
         0x10 => "<DLE>",
+        0x11 => "<DC1>",
+        0x12 => "<DC2>",
+        0x13 => "<DC3>",
+        0x14 => "<DC4>",
         0x15 => "<NAK>",
+        0x16 => "<SYN>",
+        0x17 => "<ETB>",
+        0x18 => "<CAN>",
+        0x19 => "<EM>",
+        0x1A => "<SUB>",
+        0x1B => "<ESC>",
+        0x1C => "<FS>",
+        0x1D => "<GS>",
+        0x1E => "<RS>",
+        0x1F => "<US>",
+        0x7F => "<DEL>",
         _ when value >= 0x20 && value <= 0x7E => ((char)value).ToString(),
         _ => $"<0x{value:X2}>"
     };

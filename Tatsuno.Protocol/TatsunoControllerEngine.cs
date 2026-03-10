@@ -112,18 +112,32 @@ public sealed class TatsunoControllerEngine
         return TatsunoCodec.BuildFrame(payload);
     }
 
+    /// <summary>Description of the last command accepted by ТРК (DLE1), for logging.</summary>
+    public string? LastAcceptedCommandInfo { get; private set; }
+
     public void HandleDle1(DateTime utcNow)
     {
+        LastAcceptedCommandInfo = null;
         if (LinkState == TatsunoLinkState.WaitingSelectAck1)
         {
+            LastAcceptedCommandInfo = _current is not null
+                ? $"ТРК accepted: {_current.Description} (payload={_current.Payload})"
+                : null;
             _current = null;
             LinkState = TatsunoLinkState.Idle;
             _lastStateChangeUtc = utcNow;
         }
     }
 
+    /// <summary>
+    /// Returns a description of the last control byte handling for logging.
+    /// </summary>
+    public string? LastControlByteInfo { get; private set; }
+
     public void HandleControlByte(byte control, DateTime utcNow)
     {
+        LastControlByteInfo = null;
+
         if (LinkState == TatsunoLinkState.WaitingPollResponse && control == TatsunoControlBytes.EOT)
         {
             // EOT response to poll = ТРК connected, all nozzles stored, pump idle
@@ -132,6 +146,40 @@ public sealed class TatsunoControllerEngine
             Snapshot.ActiveNozzleNumber = 0;  // No active nozzle when idle — don't override user selection
             Snapshot.LastUpdatedLocal = DateTime.Now;
 
+            LinkState = TatsunoLinkState.Idle;
+            _lastStateChangeUtc = utcNow;
+        }
+        else if (LinkState == TatsunoLinkState.WaitingSelectAck1 && control == TatsunoControlBytes.NAK)
+        {
+            // NAK = ТРК rejected the frame (BCC error or format error).
+            // Re-enqueue for retry.
+            LastControlByteInfo = $"NAK received for command: {_current?.Description ?? "?"}";
+            if (_current is not null)
+            {
+                _current.Attempts++;
+                if (_current.Attempts < 3)
+                {
+                    _queue.Enqueue(_current);
+                }
+            }
+            _current = null;
+            LinkState = TatsunoLinkState.Idle;
+            _lastStateChangeUtc = utcNow;
+        }
+        else if (LinkState != TatsunoLinkState.Idle && control == TatsunoControlBytes.EOT)
+        {
+            // Unexpected EOT while waiting for handshake or frame acknowledgment.
+            // ТРК may have reset or is not ready. Re-enqueue command.
+            LastControlByteInfo = $"Unexpected EOT in state {LinkState} for: {_current?.Description ?? "poll"}";
+            if (_current is not null)
+            {
+                _current.Attempts++;
+                if (_current.Attempts < 3)
+                {
+                    _queue.Enqueue(_current);
+                }
+                _current = null;
+            }
             LinkState = TatsunoLinkState.Idle;
             _lastStateChangeUtc = utcNow;
         }
@@ -163,7 +211,17 @@ public sealed class TatsunoControllerEngine
         });
     }
 
-    private void HandleTimeout(DateTime utcNow)
+    /// <summary>
+    /// Reset pending command queue after successful authorization (A11) to prevent re-authorization.
+    /// </summary>
+    public void ResetPendingAfterAuthorization()
+    {
+        _queue.Clear();
+        _current = null;
+        LinkState = TatsunoLinkState.Idle;
+    }
+
+   private void HandleTimeout(DateTime utcNow)
     {
         if (LinkState == TatsunoLinkState.Idle)
         {

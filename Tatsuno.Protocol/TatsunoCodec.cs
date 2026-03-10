@@ -59,22 +59,17 @@ public static class TatsunoCodec
     }
 
     /// <summary>
-    /// Build A00 CRC acknowledgment payload for Q00 Power-ON handshake.
-    /// The boot challenge "43AF" → response "C8" is confirmed empirically
-    /// across multiple cold-start logs on different motherboards.
-    /// The exact algorithm for deriving C8 from 43AF is NOT established —
-    /// the PDF CRC section was manually crossed out in the available spec.
-    /// For any unknown challenge, returns null (caller should log it).
+    /// Build A00 acknowledgment payload for Q00 Power-ON handshake.
+    /// For the empirically confirmed boot challenge "43AF",
+    /// the working response on your dispenser is "@A00EC".
     /// </summary>
     public static string? BuildCrcAcknowledgmentPayload(string crcHexData)
     {
-        // Known empirically confirmed boot challenges
         if (string.Equals(crcHexData, "43AF", StringComparison.OrdinalIgnoreCase))
         {
-            return "@A00C8";
+            return "@A00EC";
         }
 
-        // Unknown challenge — caller should log and skip
         return null;
     }
 
@@ -111,7 +106,6 @@ public static class TatsunoCodec
         builder.Append("@A11");
         builder.Append((int)term);
         builder.Append((int)presetKind);
-        // Clamp to 6-digit max (999999) to prevent field overflow in the protocol frame
         builder.Append(Math.Clamp(presetValueRaw, 0, 999999).ToString("D6"));
 
         for (int i = 0; i < 6; i++)
@@ -119,7 +113,6 @@ public static class TatsunoCodec
             if (i < products.Count)
             {
                 builder.Append((int)products[i].Flag);
-                // Clamp to 4-digit max (9999) to prevent field overflow
                 builder.Append(Math.Clamp(products[i].UnitPriceRaw, 0, 9999).ToString("D4"));
             }
             else

@@ -1,0 +1,60 @@
+# Database files
+*.db
+*.db-shm
+*.db-wal
+
+# Logs
+Logs/
+*.log
+logs/
+
+# Build results
+bin/
+obj/
+out/
+x64/
+x86/
+Debug/
+Release/
+publish_output/
+
+# Installer output (large .exe files)
+installer/output/
+
+# Keys & tools (no secrets in repo)
+keys/
+tools/
+
+# Visual Studio / Rider
+.vs/
+*.user
+*.suo
+.idea/
+
+# Package files
+*.nupkg
+*.vsix
+
+# Runtime data
+*.pidb
+*.pdb
+
+# Test results
+TestResults/
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Local docs / audits
+Docs/
+
+# Claude / AI session data
+.claude/
+.minimax/
+
+# Temp scripts
+test_launch.ps1
+checkdeps.bat
+rebuild.bat
+docs/

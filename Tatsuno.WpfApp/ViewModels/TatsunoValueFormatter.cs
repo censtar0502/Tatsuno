@@ -30,7 +30,23 @@ internal static class TatsunoValueFormatter
             return 0;
         }
 
+        // Protocol price field is 4 digits max (0000-9999).
+        // Display = raw * 10, so raw = display / 10.
+        // Use integer division (truncation toward zero) which rounds down
+        // to the nearest representable protocol value.
+        // Real fuel prices are always multiples of 100+ so no precision loss.
         return displayed / 10;
+    }
+
+    /// <summary>
+    /// Clamp a displayed price to the nearest value representable in the protocol
+    /// (must be a multiple of 10, max 99990). Returns the clamped display value.
+    /// </summary>
+    public static int ClampDisplayedPrice(int displayedPrice)
+    {
+        int raw = displayedPrice / 10;
+        raw = Math.Clamp(raw, 0, 9999);
+        return raw * 10;
     }
 
     public static int ParseDisplayedVolumeToRaw(string? text)
